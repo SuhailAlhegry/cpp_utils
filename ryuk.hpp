@@ -1,11 +1,20 @@
-#include <corecrt_memcpy_s.h>
-#if !defined (RYUK_HPP)
+#if !defined RYUK_HPP
 #define RYUK_HPP
+
+#define _CRT_SECURE_NO_DEPRECATE
+#define _CRT_SECURE_NO_WARNINGS
 
 #include <stdio.h>
 #include <utility>
 #include <inttypes.h>
 #include <string.h>
+#include <stdarg.h>
+
+#if defined (_WIN32)
+    #include <Windows.h>
+#else
+    #include <stdlib.h>
+#endif
 
 using u8 = uint8_t;
 using u16 = uint16_t;
@@ -25,25 +34,62 @@ using char_t = u8;
 // utils
 #define between(a, min, max) ((a) >= (min) && (a) <= (max))
 
-inline bool assert_handler(const char *report, const char *conditionCode, const char *file, int line) {
-    printf("assertion raised: '%s', '%s' in '%s' at line %i failed\n", report, conditionCode, file, line);
+// assertions
+inline bool assert_handler(const char *conditionCode, const char *file, int line, const char *report, ...) {
+    char buffer[512 * 512];
+    va_list args;
+    va_start(args, report);
+    vsprintf(buffer, report, args);
+    printf("assertion raised: '%s' in '%s' at line %i failed\n", conditionCode, file, line);
+    printf("%s", buffer);
+    va_end(args);
     return true;
 }
 
 #define halt() (exit(1))
 
 #if !defined(RELEASE)
-#define rassert(condition, report) ((void)(!(condition) && assert_handler(report, #condition, __FILE__, __LINE__) && (halt(), 1)))
+    #define rassert(condition, ...) ((void)(!(condition) && assert_handler(#condition, __FILE__, __LINE__, __VA_ARGS__) && (halt(), 1)))
 #else
-#define rassert(condition, report) (((void)sizeof(condition)),halt())
+#if defined(RELEASE_ASSERT)
+    #define rassert(condition, report) ((void)(!(condition) && (halt(), 1)))
 #endif
+    #define rassert(condition, report) ((void)(condition))
+#endif
+
+// allocation wrappers
+inline void *ryuk_malloc(u64 size) {
+#if defined (_WIN32)
+  return HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, size);
+#else
+  void *mem = malloc(size);
+  memset(mem, 0, size);
+  return mem;
+#endif
+}
+
+inline void *ryuk_realloc(void *mem, u64 size) {
+#if defined (_WIN32)
+  return HeapReAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, mem, size);
+#else
+  return realloc(mem, size);
+#endif
+}
+
+inline void ryuk_free(void *mem) {
+#if defined (_WIN32)
+  HeapFree(GetProcessHeap(), 0, mem);
+#else
+  return free(mem);
+#endif
+}
 
 // defer
 template<typename F>
 struct _Defer {
     F f;
 
-    _Defer(F &&f) : f(std::forward<F>(f)) {}
+    _Defer(F &&f) : f(std::move(f)) {}
 
     ~_Defer() {
         f();
@@ -67,22 +113,50 @@ constexpr u8* const_memset() {
     return ptr;
 }
 
+// code
 namespace ryuk {
     namespace memory {
-        using _regionImpl = void;
-        using _address_t = void;
+        inline size_t align(size_t size, size_t alignment) {
+            return (size + (alignment - 1)) & ~(alignment - 1);
+        }
 
         struct default_region_allocator final {
-            _regionImpl *allocate(u64 tsize, u64 length, u64 alignment);
-            _regionImpl *reallocate(_regionImpl *region, u64 tsize, u64 length, u64 alignment);
-            void         deallocate(_regionImpl *region);
-            void        *getUnderlyingPtr(_regionImpl *region);
-            u64          getUnderlyingLength(_regionImpl *region);
+            void *allocate(u64 tsize, u64 length, u64 alignment) {
+                u64 totalsize = tsize * length;
+                totalsize = align(totalsize, alignment);
+                void *mem = ryuk_malloc(totalsize);
+                return mem;
+            }
+
+            void *reallocate(void *region, u64 tsize, u64 length, u64 alignment) {
+                if (region == nullptr) return nullptr;
+
+                u64 totalsize = tsize * length;
+                totalsize = align(totalsize, alignment);
+                void *mem = ryuk_realloc(region, totalsize);
+
+                return mem;
+            }
+
+            void deallocate(void *region) {
+                if (region != nullptr) {
+                    ryuk_free(region);
+                }
+            }
         };
 
         struct default_address_allocator final {
-            _address_t *allocate(u64 tsize, u64 alignment);      
-            void        deallocate(_address_t *ptr);
+            void *allocate(u64 tsize, u64 alignment) {
+                tsize = align(tsize, alignment);
+                void *mem = ryuk_malloc(tsize);
+                return mem;
+            }
+
+            void deallocate(void *address) {
+                if (address != nullptr) {
+                    ryuk_free(address);
+                }
+            }
         };
 
         template<typename T, class allocator_t = default_address_allocator>
@@ -90,36 +164,36 @@ namespace ryuk {
             using type = T;
 
             address() {
-                this->ptr = allocator.allocate(sizeof(T), sizeof(T));
+                this->ptr = reinterpret_cast<T *>(allocator.allocate(sizeof(T), sizeof(T)));
             }
 
             address(T &&value) {
-                this->ptr = allocator.allocate(sizeof(T), sizeof(T));
+                this->ptr = reinterpret_cast<T *>(allocator.allocate(sizeof(T), sizeof(T)));
                 this->operator=(value);
             }
 
-            address(address<T> &other) {
+            address(address &other) {
                 this->ptr = other.ptr;
                 this->isCopy = true;
             }
 
-            address(address<T> &&other) {
+            address(address &&other) {
                 this->ptr = other.ptr;
             }
             
-            address<T> &operator=(T &value) {
+            address &operator=(T &value) {
                 rassert(this->ptr != nullptr, "trying to assign a value to an invalid address");
                 *reinterpret_cast<T *>(this->ptr) = value;
                 return *this;
             }
             
-            address<T> &operator=(T &&value) {
+            address &operator=(T &&value) {
                 rassert(this->ptr != nullptr, "trying to assign a value to an invalid address");
                 *reinterpret_cast<T *>(this->ptr) = value;
                 return *this;
             }
             
-            address<T> &operator=(address<T> &other) {
+            address &operator=(address &other) {
                 rassert(other.ptr != nullptr, "trying to assign an invalid address to a valid address");
                 if (this->ptr == other.ptr) {
                     return *this;
@@ -128,7 +202,7 @@ namespace ryuk {
                 this->isCopy = true;
             }
             
-            address<T> &operator=(address<T> &&other) {
+            address &operator=(address &&other) {
                 rassert(other.ptr != nullptr, "trying to assign an invalid address to a valid address");
                 if (this->ptr == other.ptr) {
                     return *this;
@@ -136,19 +210,19 @@ namespace ryuk {
                 this->ptr = other.ptr;
             }
 
-            bool operator ==(address<T> &other) {
+            bool operator ==(address &other) {
                 return this->ptr == other.ptr;
             }
 
-            bool operator !=(address<T> &other) {
+            bool operator !=(address &other) {
                 return this->ptr != other.ptr;
             }
 
-            bool operator ==(address<T> &&other) {
+            bool operator ==(address &&other) {
                 return this->ptr == other.ptr;
             }
 
-            bool operator !=(address<T> &&other) {
+            bool operator !=(address &&other) {
                 return this->ptr != other.ptr;
             }
 
@@ -169,13 +243,12 @@ namespace ryuk {
 
             void destroy() {
                 rassert(!this->isCopy, "you can't destroy a copy of an address, try passing the address by reference");
-                printf("destroying address \n");
                 allocator.deallocate(this->ptr);
                 this->ptr = nullptr;
             }
         private:
             allocator_t allocator{};
-            _address_t *ptr;
+            void *ptr;
             bool isCopy;
         };
 
@@ -186,102 +259,106 @@ namespace ryuk {
         struct region final {
             using type = T;
 
-            static constexpr region<T> invalid() {
-                return region<T> {};
+            static constexpr region invalid() {
+                return region {};
             }
 
             region(u64 length) {
                 if (length == 0) {
                     length = 1;
                 }
-                this->impl = allocator.allocate(sizeof(T), length, sizeof(T));
+                this->_memory = reinterpret_cast<T *>(allocator.allocate(sizeof(T), length, sizeof(T)));
+                this->_length = length;
             }
 
-            region(region<T> &other) {
-                rassert(other.impl != nullptr, "trying to construct a region with an invalid region");
-                this->impl = other.impl;
+            region(const region &other) {
+                rassert(other._memory != nullptr, "trying to construct a region with an invalid region");
+                this->_memory = other._memory;
+                this->_length = other._length;
                 this->isCopy = true;
             }
 
-            region(region<T> &&other) {
-                rassert(other.impl != nullptr, "trying to construct a region with an invalid region");
-                this->impl = other.impl;
+            region(const region &&other) {
+                rassert(other._memory != nullptr, "trying to construct a region with an invalid region");
+                this->_memory = other._memory;
+                this->_length = other._length;
             }
 
-            region<T> &operator=(region<T> &other) {
-                if (this->impl == other.impl) {
+            region &operator=(const region &other) {
+                if (this->_memory == other._memory) {
                     return *this; 
                 }
-                rassert(this->impl == nullptr, "trying assign a new region to a region that is still valid");
-                rassert(other.impl != nullptr, "trying to assign an invalid region");
-                this->impl = other.impl;
+                rassert(this->_memory == nullptr, "trying assign a new region to a region that is still valid");
+                rassert(other._memory != nullptr, "trying to assign an invalid region");
+                this->_memory = other._memory;
+                this->_length = other._length;
                 this->isCopy = true;
             }
 
-            region<T> &operator=(region<T> &&other) {
-                if (this->impl == other.impl) {
+            region &operator=(const region &&other) {
+                if (this->_memory == other._memory) {
                     return *this;
                 }
-                rassert(this->impl == nullptr, "trying assign a new region to a region that is still valid");
-                rassert(other.impl != nullptr, "trying to assign an invalid region");
-                this->impl = other.impl;
+                rassert(this->_memory == nullptr, "trying assign a new region to a region that is still valid");
+                rassert(other._memory != nullptr, "trying to assign an invalid region");
+                this->_memory = other._memory;
+                this->_length = other._length;
             }
 
-            bool operator ==(region<T> &other) {
-                return this->impl == other.impl;
+            bool operator ==(const region &other) const {
+                return this->_memory == other._memory;
             }
 
-            bool operator !=(region<T> &other) {
-                return this->impl != other.impl;
+            bool operator !=(const region &other) const {
+                return this->_memory != other._memory;
             }
 
-            bool operator ==(region<T> &&other) {
-                return this->impl == other.impl;
+            bool operator ==(const region &&other) const {
+                return this->_memory == other._memory;
             }
 
-            bool operator !=(region<T> &&other) {
-                return this->impl != other.impl;
+            bool operator !=(const region &&other) const {
+                return this->_memory != other._memory;
             }
 
             void resize(u64 length) {
                 rassert(!this->isCopy, "you can't resize a copy of a region, try passing the region by reference");
-                printf("resizing region \n");
-                this->impl = allocator.reallocate(this->impl, sizeof(T), length, sizeof(T));
+                this->_memory = reinterpret_cast<T *>(allocator.reallocate(this->_memory, sizeof(T), length, sizeof(T)));
+                this->_length = length;
             }
 
             void destroy() {
                 rassert(!this->isCopy, "you can't destroy a copy of a region, try passing the region by reference");
-                printf("destroying region \n");
-                allocator.deallocate(this->impl);
-                this->impl = nullptr;
+                allocator.deallocate(this->_memory);
+                this->_memory = nullptr;
+                this->_length = 0;
             }
 
-            T &operator[](u64 index) {
-                rassert(index < length(), "region access out of bounds");
-                T *ptr = reinterpret_cast<T *>(allocator.getUnderlyingPtr(this->impl));
-                return ptr[index];
+            T &operator[](u64 index) const {
+                rassert(index < _length, "region access out of bounds");
+                return this->_memory[index];
             }
 
             T *const operator&() {
-                T *ptr = reinterpret_cast<T *>(allocator.getUnderlyingPtr(this->impl));
-                return ptr;
+                return this->_memory;
             }
 
-            u64 length() {
-                return allocator.getUnderlyingLength(impl);
+            u64 length() const {
+                return _length;
             }
 
-            bool isValid() {
-                return this->impl != nullptr && length() != 0;
+            bool isValid() const {
+                return this->_memory != nullptr && length() != 0;
             }
 
-            memory_view<region> view(u64 low, u64 high) {
+            memory_view<region> view(u64 low, u64 high) const {
                 return memory_view<region>(*this, low, high);
             }
         private:
-            region<T> () {}
+            region () {}
             allocator_t allocator{};
-            _regionImpl *impl = nullptr;
+            T *_memory = nullptr;
+            u64 _length = 0;
             bool isCopy = false;
         };
 
@@ -293,34 +370,38 @@ namespace ryuk {
             
             static_region() {}
 
-            static_region(static_region<T, _length> &other) {
-                memcpy_s(this->data, _length, other.data, _length);
+            static_region(static_region &other) {
+                if (other.data == this->data) return;
+                memcpy(this->data, other.data, _length * sizeof(T));
             }
 
-            static_region(static_region<T, _length> &&other) {
-                memcpy_s(this->data, _length, other.data, _length);
+            static_region(static_region &&other) {
+                if (other.data == this->data) return;
+                memcpy(this->data, other.data, _length * sizeof(T));
             }
 
-            static_region<T, _length> operator=(static_region<T, _length> &other) {
-                memcpy_s(this->data, _length, other.data, _length);
+            static_region operator=(static_region &other) {
+                if (other.data == this->data) return;
+                memcpy(this->data, other.data, _length * sizeof(T));
             }
 
-            static_region<T, _length> operator=(static_region<T, _length> &&other) {
-                memcpy_s(this->data, _length, other.data, _length);
+            static_region operator=(static_region &&other) {
+                if (other.data == this->data) return;
+                memcpy(this->data, other.data, _length * sizeof(T));
             }
 
-            bool operator ==(static_region<T, _length> &other) {
+            bool operator ==(static_region &other) {
                 return this->data == other.data;
             }
 
-            bool operator !=(static_region<T, _length> &other) {
+            bool operator !=(static_region &other) {
                 return this->data != other.data;
             }
-            bool operator ==(static_region<T, _length> &&other) {
+            bool operator ==(static_region &&other) {
                 return this->data == other.data;
             }
 
-            bool operator !=(static_region<T, _length> &&other) {
+            bool operator !=(static_region &&other) {
                 return this->data != other.data;
             }
 
@@ -547,8 +628,9 @@ namespace ryuk {
                 rassert(_region.isValid(), "the underlying memory region of this array is invalid");
                 if (_length == 0) {
                     _region.resize(1);
+                } else {
+                    _region.resize(_length);
                 }
-                _region.resize(_length);
             }
 
             void destroy() {
@@ -556,19 +638,19 @@ namespace ryuk {
                 _length = 0;
             }
 
-            bool isValid() {
+            bool isValid() const {
                 return _region.isValid();
             }
 
-            u64 length() {
+            u64 length() const {
                 return _length;
             }
 
-            u64 capacity() {
+            u64 capacity() const {
                 return _region.length();
             }
 
-            memory_view<region_t> view(u64 low, u64 high) {
+            memory_view<region_t> view(u64 low, u64 high) const {
                 rassert(high < _length, "trying to create a view to an array with a high bound that exceeds the array length");
                 return _region.view(low, high);
             }
@@ -590,7 +672,7 @@ namespace ryuk {
             const char *readMode = "rb";
             if (mode == FILE_TEXT) readMode = "r";
 
-            if (fopen_s(&file, path, readMode) == 0) {
+            if ((file = fopen(path, readMode)) != nullptr) {
                 fseek(file, 0, SEEK_END);
                 u64 fileSize = ftell(file);
                 rewind(file);
@@ -623,7 +705,7 @@ namespace ryuk {
             const char *writeMode = "wb";
             if (mode == FILE_TEXT) writeMode = "w";
 
-            if (fopen_s(&file, path, writeMode) == 0) {
+            if ((file = fopen(path, writeMode)) != nullptr) {
                 u64 bytes = dataBytes;
                 if (elementsToWrite != 0) {
                     bytes = elementsToWrite * typeSize;
@@ -638,4 +720,6 @@ namespace ryuk {
     }
 }
 
+#undef _CRT_SECURE_NO_DEPRECATE
+#undef _CRT_SECURE_NO_WARNINGS
 #endif
