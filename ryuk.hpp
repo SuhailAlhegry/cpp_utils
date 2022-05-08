@@ -3,6 +3,7 @@
 
 #define _CRT_SECURE_NO_DEPRECATE
 #define _CRT_SECURE_NO_WARNINGS
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
 
 #include <stdio.h>
 #include <utility>
@@ -10,6 +11,10 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
+
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <DbgHelp.h>
 
 using u8 = uint8_t;
 using u16 = uint16_t;
@@ -26,6 +31,32 @@ using f64 = double;
 
 using char_t = u8;
 
+void printStack(void) {
+    constexpr u64 MAX_STACK_COUNT = 64;
+    void *stack[MAX_STACK_COUNT];
+    u16 frames;
+    SYMBOL_INFO *symbol;
+    HANDLE process = GetCurrentProcess();
+
+    SymInitialize(process, nullptr, true);
+
+    frames = CaptureStackBackTrace(0, 100, stack, nullptr);
+    symbol = (SYMBOL_INFO *) calloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char), 1);
+    symbol->MaxNameLen = 255;
+    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+
+    printf("=========call stack==========\n");
+    for (int i = 1; i < frames; i++)
+        {
+            SymFromAddr(process, (DWORD64)(stack[i]), 0, symbol);
+
+            printf("%i: %s - 0x%0llX\n", frames - i - 1, symbol->Name, symbol->Address);
+        }
+    printf("=============================\n");
+
+    free(symbol);
+}
+
 // utils
 #define between(a, min, max) ((a) >= (min) && (a) <= (max))
 
@@ -34,14 +65,15 @@ inline bool assert_handler(const char *conditionCode, const char *file, int line
     char buffer[512 * 512];
     va_list args;
     va_start(args, report);
-#if defined(_WIN32)
+#if defined(_WIN32) // msvc, even though we tried shutting it up with _CRT_SECURE_NO_WARNINGS
     vsprintf_s(buffer, report, args);
 #else
     vsprintf(buffer, report, args);
 #endif
     printf("assertion raised: '%s' in '%s' at line %i failed\n", conditionCode, file, line);
-    printf("%s", buffer);
+    printf("%s\n", buffer);
     va_end(args);
+    printStack();
     return true;
 }
 
@@ -202,7 +234,7 @@ namespace ryuk {
             bool isCopy;
         };
 
-        template<typename region_t>
+        template<typename T>
         struct memory_view;
 
         template<typename T, fn_allocator allocator_f = default_allocator, fn_deallocator deallocator_f = default_deallocator>
@@ -304,8 +336,12 @@ namespace ryuk {
                 return this->_memory != nullptr && length() != 0;
             }
 
-            memory_view<region> view(u64 low, u64 high) const {
-                return memory_view<region>(*this, low, high);
+            memory_view<T> view(u64 low, u64 high) {
+                rassert(isValid(), "trying to create a memory view from an invalid region");
+                rassert(low >= 0, "trying to create a memory view with an invalid low bound");
+                rassert(high > low, "trying to create a memory view with an invalid high bound");
+                rassert(high < _length, "trying to create a memory view with an invalid high bound");
+                return memory_view<T>(_memory, low, high);
             }
         private:
             region () {}
@@ -323,148 +359,163 @@ namespace ryuk {
             static_region() {}
 
             static_region(const static_region &other) {
-                if (other.data == this->data) return;
-                memcpy((u8 *) this->data, (u8 *) other.data, _length * sizeof(T));
+                if (other._data == this->_data) return;
+                memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region(const static_region &&other) {
-                if (other.data == this->data) return;
-                memcpy((u8 *) this->data, (u8 *) other.data, _length * sizeof(T));
+                if (other._data == this->_data) return;
+                memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region operator=(const static_region &other) {
-                if (other.data == this->data) return;
-                memcpy((u8 *) this->data, (u8 *) other.data, _length * sizeof(T));
+                if (other._data == this->_data) return;
+                memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region operator=(const static_region &&other) {
-                if (other.data == this->data) return;
-                memcpy((u8 *) this->data, (u8 *) other.data, _length * sizeof(T));
+                if (other._data == this->_data) return;
+                memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             bool operator ==(const static_region &other) const {
-                return this->data == other.data;
+                return this->_data == other._data;
             }
 
             bool operator !=(const static_region &other) const {
-                return this->data != other.data;
+                return this->_data != other._data;
             }
             bool operator ==(const static_region &&other) const {
-                return this->data == other.data;
+                return this->_data == other._data;
             }
 
             bool operator !=(const static_region &&other) const {
-                return this->data != other.data;
+                return this->_data != other._data;
             }
 
             T &operator[](u64 index) {
                 rassert(index < _length, "static region access out of bounds");
-                return data[index];
+                return _data[index];
             }
 
-            T *const operator&() const {
-                return data;
+            T const * const operator&() const {
+                return &(_data[0]);
             }
 
-            // NOTE: make this work with memory_view
             constexpr u64 length() {
                 return _length;
             }
 
-            // NOTE: make this work with memory_view
             constexpr bool isValid() {
                 return true;
             }
 
-            memory_view<static_region> view(u64 low, u64 high) {
-                return memory_view<static_region>(*this, low, high);
+            memory_view<T> view(u64 low, u64 high) {
+                rassert(low >= 0, "trying to create a memory view with an invalid low bound");
+                rassert(high > low, "trying to create a memory view with an invalid high bound");
+                rassert(high <= _length, "trying to create a memory view with an invalid high bound");
+                return memory_view<T>(_data, low, high);
             }
         private:
-            T data[_length]{};
+            T _data[_length] = {0};
         };
 
-        template<typename region_t>
+        template<typename T>
         struct memory_view {
+            using type = T;
+
             memory_view(
-                region_t &region,
+                T *memory,
                 u64 low,
                 u64 high
-            ) : region(region), low(low), high(high) {
-                rassert(region.isValid(), "trying to create a memory view with an invalid region");
+            ) : _memory(memory), _low(low), _high(high) {
+                rassert(memory != nullptr, "trying to create a memory view with an invalid memory");
                 rassert(low >= 0, "trying to create a memory view with an invalid low bound");
                 rassert(high > low, "trying to create a memory view with an invalid high bound");
             }
 
             memory_view(
                 const memory_view &other
-            ) : region(other.region), low(other.low), high(other.high) {
-                rassert(region.isValid(), "trying to copy a memory view with an invalid region");
-                rassert(low >= 0, "trying to copy a memory view with an invalid low bound");
-                rassert(high > low, "trying to copy a memory view with an invalid high bound");
+            ) : _memory(other._memory), _low(other._low), _high(other._high) {
+                rassert(_memory != nullptr, "trying to copy a memory view with an invalid memory");
+                rassert(_low >= 0, "trying to copy a memory view with an invalid low bound");
+                rassert(_high > _low, "trying to copy a memory view with an invalid high bound");
             }
 
             memory_view(
                 memory_view &&other
-            ) : region(other.region), low(other.low), high(other.high) {
-                rassert(region.isValid(), "trying to move a memory view with an invalid region");
-                rassert(low >= 0, "trying to move a memory view with an invalid low bound");
-                rassert(high > low, "trying to move a memory view with an invalid high bound");
+            ) : _memory(other._memory), _low(other._low), _high(other._high) {
+                rassert(_memory != nullptr, "trying to move a memory view with an invalid memory");
+                rassert(_low >= 0, "trying to move a memory view with an invalid low bound");
+                rassert(_high > _low, "trying to move a memory view with an invalid high bound");
+                other._memory = nullptr;
+                other._low = 0;
+                other._high = 0;
             }
 
             memory_view &operator =(
                 const memory_view &other
             ) {
-                rassert(other.region.isValid(), "trying to copy a memory view with an invalid region");
-                rassert(other.low >= 0, "trying to copy a memory view with an invalid low bound");
-                rassert(other.high > low, "trying to copy a memory view with an invalid high bound");
-                region = other.region;
-                low = other.low;
-                high = other.high;
+                rassert(other._memory != nullptr, "trying to copy a memory view with an invalid memory");
+                rassert(other._low >= 0, "trying to copy a memory view with an invalid low bound");
+                rassert(other._high > _low, "trying to copy a memory view with an invalid high bound");
+                _memory = other._memory;
+                _low = other._low;
+                _high = other._high;
             }
 
             memory_view &operator =(
                 memory_view &&other
             ) {
-                rassert(other.region.isValid(), "trying to copy a memory view with an invalid region");
-                rassert(other.low >= 0, "trying to copy a memory view with an invalid low bound");
-                rassert(other.high > low, "trying to copy a memory view with an invalid high bound");
-                region = other.region;
-                low = other.low;
-                high = other.high;
+                rassert(other._memory != nullptr, "trying to move a memory view with an invalid memory");
+                rassert(other._low >= 0, "trying to move a memory view with an invalid low bound");
+                rassert(other._high > _low, "trying to move a memory view with an invalid high bound");
+                _memory = other._memory;
+                _low = other._low;
+                _high = other._high;
+                other._memory = nullptr;
+                other._low = 0;
+                other._high = 0;
             }
 
             bool operator==(const memory_view &other) const {
-                return region == other.region && other.low == other.low && other.high == other.high;
+                return _memory == other._memory && other._low == other._low && other._high == other._high;
             }
 
             bool operator!=(const memory_view &other) const {
-                return region != other.region || other.low != other.low || other.high != other.high;
+                return _memory != other._memory || other._low != other._low || other._high != other._high;
             }
 
             bool operator==(const memory_view &&other) const {
-                return region == other.region && other.low == other.low && other.high == other.high;
+                return _memory == other._memory && other._low == other._low && other._high == other._high;
             }
 
             bool operator!=(const memory_view &&other) const {
-                return region != other.region || other.low != other.low || other.high != other.high;
+                return _memory != other._memory || other._low != other._low || other._high != other._high;
             }
 
-            typename region_t::type &operator[](u64 index) const {
+            T &operator[](u64 index) {
+                rassert(isValid(), "trying to access an invalid memory view");
                 rassert(index < length(), "memory view access out of bounds");
-                return region[low + index];
+                return _memory[_low + index];
             }
             
-            typename region_t::type *const operator&() const {
-                return &region;
+            T *const operator&() const {
+                rassert(isValid(), "trying to take address of an invalid memory view");
+                return &_memory[_low];
             }
 
             u64 length() const {
-                return high - low;
+                return _high - _low;
+            }
+
+            bool isValid() const {
+                return _memory != nullptr && _low >= 0 && _high > _low;
             }
         private:
-            region_t &region;
-            u64 low;
-            u64 high;
+            T *_memory;
+            u64 _low;
+            u64 _high;
         };
 
         template<typename T, fn_allocator allocator_f = default_allocator, fn_deallocator deallocator_f = default_deallocator>
@@ -610,8 +661,7 @@ namespace ryuk {
                 return _region.length();
             }
 
-            memory_view<region_t> view(u64 low, u64 high) const {
-                rassert(high < _length, "trying to create a view to an array with a high bound that exceeds the array length");
+            memory_view<T> view(u64 low, u64 high) {
                 return _region.view(low, high);
             }
         private:
@@ -654,11 +704,11 @@ namespace ryuk {
         }
 
         template<typename memory_holder_t>
-        inline bool writeToFile(const char *path, memory_holder_t data, u64 elementsToWrite = 0, FileMode mode = FILE_BINARY) {
-            rassert(data.isValid(), "trying to write to file from an invalid memory holder");
+        inline bool writeToFile(const char *path, memory_holder_t &holder, u64 elementsToWrite = 0, FileMode mode = FILE_BINARY) {
+            rassert(holder.isValid(), "trying to write to file from an invalid memory holder");
             constexpr u64 typeSize = sizeof(typename memory_holder_t::type);
-            u64 dataBytes = data.length() * typeSize;
-            rassert(data.length() >= elementsToWrite, "trying to write more elements than stored in the memory holder");
+            u64 dataBytes = holder.length() * typeSize;
+            rassert(holder.length() >= elementsToWrite, "trying to write more elements than stored in the memory holder");
 
             FILE *file = nullptr;
 
@@ -670,7 +720,7 @@ namespace ryuk {
                 if (elementsToWrite != 0) {
                     bytes = elementsToWrite * typeSize;
                 }
-                fwrite(&data, typeSize, bytes, file);
+                fwrite(&holder, typeSize, bytes, file);
                 fclose(file);
                 return true;
             }
