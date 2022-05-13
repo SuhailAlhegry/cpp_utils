@@ -1,9 +1,11 @@
-#if !defined RYUK_HPP
+#if !defined(RYUK_HPP)
 #define RYUK_HPP
 
 #define _CRT_SECURE_NO_DEPRECATE
 #define _CRT_SECURE_NO_WARNINGS
-#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#if !defined(_MSC_VER)
+    #pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#endif
 
 #include <stdio.h>
 #include <utility>
@@ -11,10 +13,6 @@
 #include <string.h>
 #include <stdarg.h>
 #include <stdlib.h>
-
-#define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#include <DbgHelp.h>
 
 using u8 = uint8_t;
 using u16 = uint16_t;
@@ -31,31 +29,43 @@ using f64 = double;
 
 using char_t = u8;
 
-void printStack(void) {
-    constexpr u64 MAX_STACK_COUNT = 64;
-    void *stack[MAX_STACK_COUNT];
-    u16 frames;
-    SYMBOL_INFO *symbol;
-    HANDLE process = GetCurrentProcess();
+#if !defined(RELEASE)
+    #if defined(_WIN32)
+        #define WIN32_LEAN_AND_MEAN
+        #include <Windows.h>
+        #include <DbgHelp.h>
 
-    SymInitialize(process, nullptr, true);
+        void printStack() {
+            constexpr u64 MAX_STACK_COUNT = 64;
+            void *stack[MAX_STACK_COUNT];
+            u16 frames;
+            SYMBOL_INFO *symbol;
+            HANDLE process = GetCurrentProcess();
 
-    frames = CaptureStackBackTrace(0, 100, stack, nullptr);
-    symbol = (SYMBOL_INFO *) calloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char), 1);
-    symbol->MaxNameLen = 255;
-    symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+            SymInitialize(process, nullptr, true);
 
-    printf("=========call stack==========\n");
-    for (int i = 1; i < frames; i++)
-        {
-            SymFromAddr(process, (DWORD64)(stack[i]), 0, symbol);
+            frames = CaptureStackBackTrace(0, 100, stack, nullptr);
+            symbol = (SYMBOL_INFO *) calloc(sizeof(SYMBOL_INFO) + 256 * sizeof(char), 1);
+            symbol->MaxNameLen = 255;
+            symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
 
-            printf("%i: %s - 0x%0llX\n", frames - i - 1, symbol->Name, symbol->Address);
+            printf("=========call stack==========\n");
+            for (int i = 1; i < frames; i++)
+                {
+                    SymFromAddr(process, (DWORD64)(stack[i]), 0, symbol);
+
+                    printf("%i: %s - 0x%0llX\n", frames - i - 1, symbol->Name, symbol->Address);
+                }
+            printf("=============================\n");
+
+            free(symbol);
         }
-    printf("=============================\n");
-
-    free(symbol);
-}
+    #else
+        void printStack() {
+            // do nothing for now
+        }
+    #endif
+#endif
 
 // utils
 #define between(a, min, max) ((a) >= (min) && (a) <= (max))
