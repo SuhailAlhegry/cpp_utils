@@ -27,7 +27,7 @@ namespace achilles {
 
             address() {
                 this->ptr = reinterpret_cast<T *>(allocator_f(sizeof(T), sizeof(T), nullptr, 0));
-                this->ptr->T();
+                new (this->ptr) T();
             }
 
             address(T &&value) {
@@ -263,13 +263,13 @@ namespace achilles {
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
-            static_region operator=(const static_region &other) {
-                if (other._data == this->_data) return;
+            static_region &operator=(const static_region &other) {
+                if (other._data == this->_data) return *this;
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
-            static_region operator=(const static_region &&other) {
-                if (other._data == this->_data) return;
+            static_region &operator=(const static_region &&other) {
+                if (other._data == this->_data) return *this;
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
