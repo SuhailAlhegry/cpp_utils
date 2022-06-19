@@ -1,9 +1,9 @@
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
-// this file depends on <string.h> for 'memcpy' and friends
-// should be able to remove this dependency when providing own 'memcpy' implementation
-#include <string.h>
+// this file depends on <cstring> for 'std::memcpy' and friends
+// should be able to remove this dependency when providing own 'std::memcpy' implementation
+#include <cstring>
 #include <initializer_list>
 #include "types.hpp"
 #include "assert.hpp"
@@ -255,22 +255,22 @@ namespace achilles {
 
             static_region(const static_region &other) {
                 if (other._data == this->_data) return;
-                memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
+                std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region(const static_region &&other) {
                 if (other._data == this->_data) return;
-                memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
+                std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region operator=(const static_region &other) {
                 if (other._data == this->_data) return;
-                memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
+                std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region operator=(const static_region &&other) {
                 if (other._data == this->_data) return;
-                memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
+                std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             bool operator ==(const static_region &other) const {
@@ -554,7 +554,7 @@ namespace achilles {
 
             array copy() {
                 array result(this->_length);
-                memcpy(result._region._memory, this->_region._memory, this->_length * sizeof(T));
+                std::memcpy(result._region._memory, this->_region._memory, this->_length * sizeof(T));
                 result._length = this->_length;
                 return result;
             }

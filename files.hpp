@@ -2,7 +2,7 @@
 #define ACHILLES_FILES_HPP
 
 // this file requires <stdio.h> for 'fopen' and friends
-#include <stdio.h>
+#include <cstdio>
 #include "types.hpp"
 #include "assert.hpp"
 
@@ -22,21 +22,21 @@ namespace achilles {
             const char *readMode = "rb";
             if (mode == FILE_TEXT) readMode = "r";
 
-            if ((file = fopen(path, readMode)) != nullptr) {
-                fseek(file, 0, SEEK_END);
+            if ((file = std::fopen(path, readMode)) != nullptr) {
+                std::fseek(file, 0, SEEK_END);
                 u64 fileSize = ftell(file) / typeSize;
-                rewind(file);
+                std::rewind(file);
                 memory::region<T, allocator_f, deallocator_f> memory(fileSize);
                 u64 totalBytesRead = 0;
                 T buffer[READ_BUFFER_SIZE];
-                while (!feof(file)) {
-                    u64 readBytes = fread(buffer, sizeof *buffer, READ_BUFFER_SIZE, file);
+                while (!std::feof(file)) {
+                    u64 readBytes = std::fread(buffer, sizeof *buffer, READ_BUFFER_SIZE, file);
                     if (readBytes == 0) break;
                     for (int i = 0; i < readBytes; i++) {
                         memory[totalBytesRead++] = buffer[i];
                     }
                 }
-                fclose(file);
+                std::fclose(file);
                 return memory;
             }
             
@@ -55,13 +55,13 @@ namespace achilles {
             const char *writeMode = "wb";
             if (mode == FILE_TEXT) writeMode = "w";
 
-            if ((file = fopen(path, writeMode)) != nullptr) {
+            if ((file = std::fopen(path, writeMode)) != nullptr) {
                 u64 elementCount = count;
                 if (elementsToWrite != 0) {
                     elementCount = elementsToWrite;
                 }
-                fwrite(&holder, typeSize, elementCount, file);
-                fclose(file);
+                std::fwrite(&holder, typeSize, elementCount, file);
+                std::fclose(file);
                 return true;
             }
 
