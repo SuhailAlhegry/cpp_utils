@@ -1,6 +1,7 @@
 #if !defined(ACHILLES_MATH_HPP)
 #define ACHILLES_MATH_HPP
 
+// this file depends on <cmath> for 'sqrt'
 #include <cmath>
 #include "types.hpp"
 
