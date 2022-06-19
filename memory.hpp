@@ -1,6 +1,9 @@
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
+// this file depends on <string.h> for 'memcpy' and friends
+// should be able to remove this dependency when providing own 'memcpy' implementation
+#include <string.h>
 #include <initializer_list>
 #include "types.hpp"
 #include "assert.hpp"

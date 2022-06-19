@@ -1,6 +1,8 @@
 #if !defined(ACHILLES_FILES_HPP)
 #define ACHILLES_FILES_HPP
 
+// this file requires <stdio.h> for 'fopen' and friends
+#include <stdio.h>
 #include "types.hpp"
 #include "assert.hpp"
 
