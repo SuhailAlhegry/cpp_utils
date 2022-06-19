@@ -1,8 +1,13 @@
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
+#include <initializer_list>
 #include "types.hpp"
 #include "assert.hpp"
+
+#define KB(s) ((s) * 1024ULL)
+#define MB(s) ((s) * KB(1))
+#define GB(s) ((s) * MB(1))
 
 namespace achilles {
     namespace memory {
@@ -412,6 +417,12 @@ namespace achilles {
 
             array(u64 capacity = 8) : _region(region_t(capacity)), _length(0) {}
 
+            array(std::initializer_list<T> list) : array(list.size()) {
+                for (const auto &e : list) {
+                    append(static_cast<const T &>(e));
+                }
+            }
+
             array(const array &other) {
                 aassert(other.isValid(), "the underlying memory region of the copied array is invalid");
                 _region = region_t(other._region);
@@ -494,6 +505,14 @@ namespace achilles {
                 _region[_length++] = static_cast<T &&>(value);
             }
 
+            void push(const T &value) {
+                append(static_cast<const T &>(value));
+            }
+
+            void push(T &&value) {
+                append(static_cast<T &&>(value));
+            }
+
             T &pop() {
                 aassert(_region.isValid(), "the underlying memory region of this array is invalid");
                 return _region[--_length];
@@ -559,6 +578,116 @@ namespace achilles {
             }
         private:
             region_t _region;
+            u64 _length = 0;
+        };
+
+        template<typename T, u64 size>
+        struct static_array {
+            using type = T;
+            using region_t = static_region<T, size>;
+
+            static_array() {}
+
+            static_array(std::initializer_list<T> list) {
+                for (const auto &e : list) {
+                    append(static_cast<const T &>(e));
+                }
+            }
+
+            static_array(const static_array &other) {
+                this->_region = static_cast<const region_t &>(other._region);
+            }
+
+            static_array(static_array &&other) {
+                this->_region = static_cast<region_t &&>(other._region);
+            }
+
+            static_array operator=(const static_array &other) {
+                this->_region = static_cast<const region_t &>(other.region);
+            }
+
+            static_array operator=(static_array &&other) {
+                this->_region = static_cast<region_t &&>(other.region);
+            }
+
+            bool operator==(const static_array &other) const {
+                return this->_region == other._region;
+            }
+
+            bool operator!=(const static_array &other) const {
+                return this->_region != other._region;
+            }
+
+            bool operator==(static_array &&other) const {
+                return this->_region == other._region;
+            }
+
+            bool operator!=(static_array &&other) const {
+                return this->_region != other._region;
+            }
+
+            T &operator[](u64 index) {
+                return _region[index];
+            }
+
+            T const * const operator&() const {
+                return &_region;
+            }
+
+            void append(const T &value) {
+                aassert(_length < size, "static array is full");
+                _region[_length++] = value;
+            }
+
+            void append(T &&value) {
+                aassert(_length < size, "static array is full");
+                _region[_length++] = static_cast<T &&>(value);
+            }
+
+            void push(const T &value) {
+                append(static_cast<const T &>(value));
+            }
+
+            void push(T &&value) {
+                append(static_cast<T &&>(value));
+            }
+
+            T &pop() {
+                aassert(_length > 0, "static array is empty");
+                return _region[--_length];
+            }
+
+            void swap(u64 aindex, u64 bindex) {
+                aassert(aindex < _length, "a index is out of bounds");
+                aassert(bindex < _length, "b index is out of bounds");
+                T temp = _region[aindex];
+                _region[aindex] = _region[bindex];
+                _region[bindex] = temp;
+            }
+
+            T &swapRemove(u64 index) {
+                aassert(index < _length, "index out of bounds");
+                swap(index, _length - 1);
+                return pop();
+            }
+
+            constexpr bool isValid() const {
+                return true;
+            }
+
+            u64 length() const {
+                return _length;
+            }
+
+            constexpr u64 capacity() const {
+                return size;
+            }
+
+            memory_view<T> view(u64 low, u64 high) {
+                return _region.view(low, high);
+            }
+        private:
+            static_region<T, size> _region;
             u64 _length = 0;
         };
     }
