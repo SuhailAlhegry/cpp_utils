@@ -227,6 +227,10 @@ namespace achilles {
                 return _length;
             }
 
+            u64 size() const {
+                return _length;
+            }
+
             bool isValid() const {
                 return this->_memory != nullptr && length() != 0;
             }
@@ -251,7 +255,9 @@ namespace achilles {
             static constexpr u64 slength = _length;
             static_assert(_length > 0, "cannot create a static region of length 0");
             
-            static_region() {}
+            static_region() {
+                std::memset(this->_data, 0, _length);
+            }
 
             static_region(const static_region &other) {
                 if (other._data == this->_data) return;
@@ -301,6 +307,10 @@ namespace achilles {
                 return _length;
             }
 
+            constexpr u64 size() {
+                return _length;
+            }
+
             constexpr bool isValid() {
                 return true;
             }
@@ -312,7 +322,7 @@ namespace achilles {
                 return memory_view<T>(_data, low, high);
             }
         private:
-            T _data[_length] = {0};
+            T _data[_length];
         };
 
         template<typename T>
@@ -401,6 +411,10 @@ namespace achilles {
             }
 
             u64 length() const {
+                return _high - _low;
+            }
+
+            u64 size() const {
                 return _high - _low;
             }
 
@@ -576,6 +590,10 @@ namespace achilles {
                 return _region.length();
             }
 
+            u64 size() const {
+                return _region.length();
+            }
+
             memory_view<T> view(u64 low, u64 high) {
                 return _region.view(low, high);
             }
@@ -584,10 +602,10 @@ namespace achilles {
             u64 _length = 0;
         };
 
-        template<typename T, u64 size>
+        template<typename T, u64 _size>
         struct static_array {
             using type = T;
-            using region_t = static_region<T, size>;
+            using region_t = static_region<T, _size>;
 
             static_array() {}
 
@@ -643,7 +661,7 @@ namespace achilles {
             }
 
             void append(T &&value) {
-                aassert(_length < size, "static array is full");
+                aassert(_length < _size, "static array is full");
                 _region[_length++] = static_cast<T &&>(value);
             }
 
@@ -683,14 +701,18 @@ namespace achilles {
             }
 
             constexpr u64 capacity() const {
-                return size;
+                return _size;
+            }
+
+            constexpr u64 size() const {
+                return _size;
             }
 
             memory_view<T> view(u64 low, u64 high) {
                 return _region.view(low, high);
             }
         private:
-            static_region<T, size> _region;
+            static_region<T, _size> _region;
             u64 _length = 0;
         };
     }

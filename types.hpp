@@ -14,5 +14,12 @@ using s64 = signed long long;
 using f32 = float;
 using f64 = double;
 
+#define macro_concat(a, b) a##b
+#define macro_concat2(a, b) macro_concat(a, b)
+
+#define Unsigned(nbits) macro_concat2(u, nbits)
+#define Signed(nbits) macro_concat2(s, nbits)
+#define Float(nbits) macro_concat2(f, nbits)
+
 #endif
 
