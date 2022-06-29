@@ -255,9 +255,7 @@ namespace achilles {
             static constexpr u64 slength = _length;
             static_assert(_length > 0, "cannot create a static region of length 0");
             
-            static_region() {
-                std::memset(this->_data, 0, _length);
-            }
+            static_region() {}
 
             static_region(const static_region &other) {
                 if (other._data == this->_data) return;
@@ -322,7 +320,7 @@ namespace achilles {
                 return memory_view<T>(_data, low, high);
             }
         private:
-            T _data[_length];
+            T _data[_length]{};
         };
 
         template<typename T>
