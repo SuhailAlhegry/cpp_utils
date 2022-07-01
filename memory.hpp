@@ -297,8 +297,8 @@ namespace achilles {
                 return _data[index];
             }
 
-            T const * const operator&() const {
-                return &(_data[0]);
+            T * const operator&() const {
+                return (T *const) _data;
             }
 
             constexpr u64 length() {
@@ -382,19 +382,19 @@ namespace achilles {
             }
 
             bool operator==(const memory_view &other) const {
-                return _memory == other._memory && other._low == other._low && other._high == other._high;
+                return _memory == other._memory && _low == other._low && _high == other._high;
             }
 
             bool operator!=(const memory_view &other) const {
-                return _memory != other._memory || other._low != other._low || other._high != other._high;
+                return _memory != other._memory || _low != other._low || _high != other._high;
             }
 
             bool operator==(const memory_view &&other) const {
-                return _memory == other._memory && other._low == other._low && other._high == other._high;
+                return _memory == other._memory && _low == other._low && _high == other._high;
             }
 
             bool operator!=(const memory_view &&other) const {
-                return _memory != other._memory || other._low != other._low || other._high != other._high;
+                return _memory != other._memory || _low != other._low || _high != other._high;
             }
 
             T &operator[](u64 index) {
@@ -424,6 +424,9 @@ namespace achilles {
             u64 _low;
             u64 _high;
         };
+
+        template<typename T>
+        struct array_view;
 
         template<typename T, fn_allocator allocator_f, fn_deallocator deallocator_f, bool autoDestroy = true>
         struct array {
@@ -595,6 +598,11 @@ namespace achilles {
             memory_view<T> view(u64 low, u64 high) {
                 return _region.view(low, high);
             }
+
+            array_view<T> arrayView() {
+                aassert(isValid(), "trying to make a view of an invalid array");
+                return array_view<T>(&_region, _length, _region.length());
+            }
         private:
             region_t _region;
             u64 _length = 0;
@@ -621,12 +629,14 @@ namespace achilles {
                 this->_region = static_cast<region_t &&>(other._region);
             }
 
-            static_array operator=(const static_array &other) {
+            static_array &operator=(const static_array &other) {
                 this->_region = static_cast<const region_t &>(other.region);
+                return *this;
             }
 
             static_array operator=(static_array &&other) {
                 this->_region = static_cast<region_t &&>(other.region);
+                return *this;
             }
 
             bool operator==(const static_array &other) const {
@@ -649,12 +659,12 @@ namespace achilles {
                 return _region[index];
             }
 
-            T const * const operator&() const {
+            T * const operator&() const {
                 return &_region;
             }
 
             void append(const T &value) {
-                aassert(_length < size, "static array is full");
+                aassert(_length < _size, "static array is full");
                 _region[_length++] = value;
             }
 
@@ -709,9 +719,156 @@ namespace achilles {
             memory_view<T> view(u64 low, u64 high) {
                 return _region.view(low, high);
             }
+            
+            array_view<T> arrayView() {
+                aassert(isValid(), "trying to make a view of an invalid static array");
+                return array_view<T>(&_region, _length, _region.length());
+            }
         private:
             static_region<T, _size> _region;
             u64 _length = 0;
+        };
+        
+        template<typename T>
+        struct array_view {
+            using type = T;
+            
+            array_view(
+                T *memory, u64 length, u64 capacity 
+            ) :
+                _memory(memory), _length(length), _capacity(capacity)
+            {
+                aassert(memory != nullptr, "the pointer used to create the array view is null");
+                aassert(length < capacity, "length used to create the array view is invalid");
+                aassert(capacity != 0, "capacity used to create the array view is invalid");
+            }
+
+            array_view(
+                const array_view &other
+            ) : _memory(other._memory), _length(other._length), _capacity(other._capacity) {
+                aassert(_memory != nullptr, "the pointer used to create the array view is null");
+                aassert(_length < _capacity, "length used to create the array view is invalid");
+                aassert(_capacity != 0, "capacity used to create the array view is invalid");
+            }
+
+            array_view(
+                array_view &&other
+            ) : _memory(other._memory), _length(other._length), _capacity(other._capacity) {
+                aassert(_memory != nullptr, "the pointer used to create the array view is null");
+                aassert(_length < _capacity, "length used to create the array view is invalid");
+                aassert(_capacity != 0, "capacity used to create the array view is invalid");
+                other._memory = nullptr;
+                other._length = 0;
+                other._capacity = 0;
+            }
+
+            array_view &operator=(const array_view &other) {
+                aassert(_memory != nullptr, "the pointer used to create the array view is null");
+                aassert(_length < _capacity, "length used to create the array view is invalid");
+                aassert(_capacity != 0, "capacity used to create the array view is invalid");
+                _memory = other._memory;
+                _length = other._length;
+                _capacity = other._capacity;
+                return *this;
+            }
+
+            array_view &operator=(array_view &&other) {
+                aassert(_memory != nullptr, "the pointer used to create the array view is null");
+                aassert(_length < _capacity, "length used to create the array view is invalid");
+                aassert(_capacity != 0, "capacity used to create the array view is invalid");
+                _memory = other._memory;
+                _length = other._length;
+                _capacity = other._capacity;
+                other._memory = nullptr;
+                other._length = 0;
+                other._capacity = 0;
+                return *this;
+            }
+
+            bool operator==(const array_view &other) const {
+                return _memory == other._memory && _length == other._length && _capacity == other._capacity;
+            }
+
+            bool operator!=(const array_view &other) const {
+                return _memory != other._memory || _length != other._length || _capacity != other._capacity;
+            }
+
+            bool operator==(array_view &&other) const {
+                return _memory == other._memory && _length == other._length && _capacity == other._capacity;
+            }
+
+            bool operator!=(array_view &&other) const {
+                return _memory != other._memory || _length != other._length || _capacity != other._capacity;
+            }
+
+            T &operator[](u64 index) {
+                aassert(isValid(), "trying to access an invalid array view");
+                aassert(index < length(), "array view access out of bounds");
+                return _memory[index];
+            }
+            
+            T const * const operator&() const {
+                aassert(isValid(), "trying to take address of an invalid array view");
+                return _memory;
+            }
+
+            u64 length() const {
+                return _length;
+            }
+
+            u64 capacity() const {
+                return _capacity;
+            }
+
+            u64 size() const {
+                return _capacity;
+            }
+
+            bool isValid() const {
+                return _memory != nullptr && _length >= 0 && _capacity > _length;
+            }
+
+            void append(const T &value) {
+                aassert(_length < _capacity, "array view is full");
+                _memory[_length++] = value;
+            }
+
+            void append(T &&value) {
+                aassert(_length < _capacity, "array view is full");
+                _memory[_length++] = static_cast<T &&>(value);
+            }
+
+            void push(const T &value) {
+                append(static_cast<const T &>(value));
+            }
+
+            void push(T &&value) {
+                append(static_cast<T &&>(value));
+            }
+
+            T &pop() {
+                aassert(_length > 0, "array view is empty");
+                return _memory[--_length];
+            }
+
+            void swap(u64 aindex, u64 bindex) {
+                aassert(aindex < _length, "a index is out of bounds");
+                aassert(bindex < _length, "b index is out of bounds");
+                T temp = _memory[aindex];
+                _memory[aindex] = _memory[bindex];
+                _memory[bindex] = temp;
+            }
+
+            T &swapRemove(u64 index) {
+                aassert(index < _length, "index out of bounds");
+                swap(index, _length - 1);
+                return pop();
+            }
+
+        private:
+            T *_memory = nullptr;
+            u64 _length = 0;
+            u64 _capacity = 0;
         };
     }
 }
