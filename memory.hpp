@@ -102,7 +102,7 @@ namespace achilles {
                 return *reinterpret_cast<T*>(ptr);
             }
 
-            T *const operator&() const {
+            T *operator&() {
                 aassert(this->ptr != nullptr, "trying to take the pointer of invalid address");
                 return reinterpret_cast<T*>(ptr);
             }
@@ -219,7 +219,7 @@ namespace achilles {
                 return this->_memory[index];
             }
 
-            T *const operator&() const {
+            T *operator&() {
                 return this->_memory;
             }
 
@@ -237,7 +237,6 @@ namespace achilles {
 
             memory_view<T> view(u64 low, u64 high) {
                 aassert(isValid(), "trying to create a memory view from an invalid region");
-                aassert(low >= 0, "trying to create a memory view with an invalid low bound");
                 aassert(high > low, "trying to create a memory view with an invalid high bound");
                 aassert(high < _length, "trying to create a memory view with an invalid high bound");
                 return memory_view<T>(_memory, low, high);
@@ -297,7 +296,7 @@ namespace achilles {
                 return _data[index];
             }
 
-            T * const operator&() const {
+            T *operator&() const {
                 return (T *const) _data;
             }
 
@@ -314,7 +313,6 @@ namespace achilles {
             }
 
             memory_view<T> view(u64 low, u64 high) {
-                aassert(low >= 0, "trying to create a memory view with an invalid low bound");
                 aassert(high > low, "trying to create a memory view with an invalid high bound");
                 aassert(high <= _length, "trying to create a memory view with an invalid high bound");
                 return memory_view<T>(_data, low, high);
@@ -333,7 +331,6 @@ namespace achilles {
                 u64 high
             ) : _memory(memory), _low(low), _high(high) {
                 aassert(memory != nullptr, "trying to create a memory view with an invalid memory");
-                aassert(low >= 0, "trying to create a memory view with an invalid low bound");
                 aassert(high > low, "trying to create a memory view with an invalid high bound");
             }
 
@@ -341,7 +338,6 @@ namespace achilles {
                 const memory_view &other
             ) : _memory(other._memory), _low(other._low), _high(other._high) {
                 aassert(_memory != nullptr, "trying to copy a memory view with an invalid memory");
-                aassert(_low >= 0, "trying to copy a memory view with an invalid low bound");
                 aassert(_high > _low, "trying to copy a memory view with an invalid high bound");
             }
 
@@ -349,7 +345,6 @@ namespace achilles {
                 memory_view &&other
             ) : _memory(other._memory), _low(other._low), _high(other._high) {
                 aassert(_memory != nullptr, "trying to move a memory view with an invalid memory");
-                aassert(_low >= 0, "trying to move a memory view with an invalid low bound");
                 aassert(_high > _low, "trying to move a memory view with an invalid high bound");
                 other._memory = nullptr;
                 other._low = 0;
@@ -360,7 +355,6 @@ namespace achilles {
                 const memory_view &other
             ) {
                 aassert(other._memory != nullptr, "trying to copy a memory view with an invalid memory");
-                aassert(other._low >= 0, "trying to copy a memory view with an invalid low bound");
                 aassert(other._high > _low, "trying to copy a memory view with an invalid high bound");
                 _memory = other._memory;
                 _low = other._low;
@@ -371,7 +365,6 @@ namespace achilles {
                 memory_view &&other
             ) {
                 aassert(other._memory != nullptr, "trying to move a memory view with an invalid memory");
-                aassert(other._low >= 0, "trying to move a memory view with an invalid low bound");
                 aassert(other._high > _low, "trying to move a memory view with an invalid high bound");
                 _memory = other._memory;
                 _low = other._low;
@@ -403,7 +396,7 @@ namespace achilles {
                 return _memory[_low + index];
             }
             
-            T *const operator&() const {
+            T *operator&() {
                 aassert(isValid(), "trying to take address of an invalid memory view");
                 return &_memory[_low];
             }
@@ -417,7 +410,7 @@ namespace achilles {
             }
 
             bool isValid() const {
-                return _memory != nullptr && _low >= 0 && _high > _low;
+                return _memory != nullptr && _high > _low;
             }
         private:
             T *_memory;
@@ -496,7 +489,7 @@ namespace achilles {
                 return _region[index];
             }
 
-            T *const operator&() {
+            T *operator&() {
                 aassert(_region.isValid(), "the underlying memory region of this array is invalid");
                 return &_region;
             }
@@ -659,7 +652,7 @@ namespace achilles {
                 return _region[index];
             }
 
-            T * const operator&() const {
+            T *operator&() {
                 return &_region;
             }
 
@@ -807,7 +800,7 @@ namespace achilles {
                 return _memory[index];
             }
             
-            T const * const operator&() const {
+            T *operator&() const {
                 aassert(isValid(), "trying to take address of an invalid array view");
                 return _memory;
             }
@@ -825,7 +818,7 @@ namespace achilles {
             }
 
             bool isValid() const {
-                return _memory != nullptr && _length >= 0 && _capacity > _length;
+                return _memory != nullptr && _capacity > _length;
             }
 
             void append(const T &value) {

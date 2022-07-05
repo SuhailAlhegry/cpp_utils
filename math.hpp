@@ -373,7 +373,7 @@ namespace achilles {
         }
 
         inline f32 float2::magnitude() const {
-            return std::sqrtf((this->x * this->x) + (this->y * this->y));
+            return std::sqrt((this->x * this->x) + (this->y * this->y));
         }
 
         inline float2 & float2::normalize() {
@@ -524,7 +524,7 @@ namespace achilles {
         }
 
         inline f32 float3::magnitude() const {
-            return std::sqrtf((this->x * this->x) + (this->y * this->y) + (this->z * this->z));
+            return std::sqrt((this->x * this->x) + (this->y * this->y) + (this->z * this->z));
         }
 
         inline float3 & float3::normalize() {
@@ -677,7 +677,7 @@ namespace achilles {
         }
 
         inline f32 float4::magnitude() const {
-            return std::sqrtf((this->x * this->x) + (this->y * this->y) + (this->z * this->z) + (this->w * this->w));
+            return std::sqrt((this->x * this->x) + (this->y * this->y) + (this->z * this->z) + (this->w * this->w));
         }
 
         inline float4 & float4::normalize() {
