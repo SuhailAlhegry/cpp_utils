@@ -32,7 +32,7 @@ namespace achilles {
                 while (!std::feof(file)) {
                     u64 readBytes = std::fread(buffer, sizeof *buffer, READ_BUFFER_SIZE, file);
                     if (readBytes == 0) break;
-                    for (int i = 0; i < readBytes; i++) {
+                    for (u64 i = 0; i < readBytes; i++) {
                         memory[totalBytesRead++] = buffer[i];
                     }
                 }
