@@ -190,6 +190,7 @@ namespace achilles {
             float3 normalized() const;
             constexpr static f32 dot(float3 a, float3 b);
             constexpr static float3 cross(float3 a, float3 b);
+            constexpr static float3 zero();
             constexpr static float3 one();
             constexpr static float3 up();
             constexpr static float3 right();
@@ -288,6 +289,7 @@ namespace achilles {
             } rows;
 
             f32 values[4][4];
+            f32 svalues[4 * 4];
             
             constexpr float4x4(
                 float4 a = float4{ 1, 0, 0, 0 },
@@ -307,12 +309,18 @@ namespace achilles {
             constexpr float4x4 & operator /=(f32 s);
             constexpr float4x4 operator *(float4x4 m) const;
             constexpr float4x4 & operator *=(float4x4 m);
+            constexpr float4x4 transpose() const;
             constexpr float4 operator *(float4 v) const;
             constexpr float3 operator *(float3 v) const;
             constexpr float3 perspectiveMul(float3 v) const;
             quaternion toRotation() const;
+
+            constexpr static float4x4 transpose(float4x4 m);
             constexpr static float4x4 fromRotation(quaternion q);
-            static float4x4 lookAt(float3 direction, float3 up = float3::up());
+            constexpr static float4x4 scale(float3 s);
+            constexpr static float4x4 translate(float3 t);
+            constexpr static float4x4 perspective(f32 fov, f32 aspectRatio, f32 near, f32 far);
+            static float4x4 lookAt(float3 point, float3 eye = float3::zero(), float3 up = float3::up());
         };
         
         // float2
@@ -558,6 +566,10 @@ namespace achilles {
             ); 
         }
 
+        constexpr float3 float3::zero() {
+            return float3(0.0f, 0.0f, 0.0f);
+        }
+
         constexpr float3 float3::one() {
             return float3(1.0f, 1.0f, 1.0f);
         }
@@ -579,7 +591,7 @@ namespace achilles {
         }
 
         constexpr float3 float3::forward() {
-            return float3(0.0f, 0.0f, -1.0f);
+            return float3(0.0f, 0.0f, 1.0f);
         }
 
         constexpr float3 float3::back() {
@@ -969,6 +981,15 @@ namespace achilles {
             return (float3) this->operator*((float4) v);
         }
 
+        constexpr float4x4 float4x4::transpose() const {
+            return float4x4 {
+                float4 { values[0][0], values[1][0], values[2][0], values[3][0] },
+                float4 { values[0][1], values[1][1], values[2][1], values[3][1] },
+                float4 { values[0][2], values[1][2], values[2][2], values[3][2] },
+                float4 { values[0][3], values[1][3], values[2][3], values[3][3] },
+            };
+        }
+
         constexpr float3 float4x4::perspectiveMul(float3 v) const {
             float3 result = float3 {
                 this->rows.a.dot(v),
@@ -982,7 +1003,7 @@ namespace achilles {
             result.z *= w;
             return result;
         }
-        
+
         constexpr float4x4 float4x4::fromRotation(quaternion q) {
             f32 x2 = q.x + q.x;
             f32 y2 = q.y + q.y;
@@ -1008,6 +1029,47 @@ namespace achilles {
             };
         }
 
+        constexpr float4x4 float4x4::transpose(float4x4 m) {
+            return float4x4 {
+                float4 { m.values[0][0], m.values[1][0], m.values[2][0], m.values[3][0] },
+                float4 { m.values[0][1], m.values[1][1], m.values[2][1], m.values[3][1] },
+                float4 { m.values[0][2], m.values[1][2], m.values[2][2], m.values[3][2] },
+                float4 { m.values[0][3], m.values[1][3], m.values[2][3], m.values[3][3] },
+            };
+        }
+
+        constexpr float4x4 float4x4::scale(float3 s) {
+            return float4x4 {
+                float4 {  s.x, 0.0f, 0.0f, 0.0f },
+                float4 { 0.0f,  s.y, 0.0f, 0.0f },
+                float4 { 0.0f, 0.0f,  s.z, 0.0f },
+                float4 { 0.0f, 0.0f, 0.0f, 1.0f },
+            };
+        }
+
+        constexpr float4x4 float4x4::translate(float3 t) {
+            return float4x4 {
+                float4 { 0.0f, 0.0f, 0.0f,  t.x },
+                float4 { 0.0f, 0.0f, 0.0f,  t.y },
+                float4 { 0.0f, 0.0f, 0.0f,  t.z },
+                float4 { 0.0f, 0.0f, 0.0f, 1.0f },
+            };
+        }
+
+        constexpr float4x4 float4x4::perspective(f32 fov, f32 aspectRatio, f32 near, f32 far) {
+            f32 angle = fov * DEG_TO_RAD;
+            f32 tangent = std::tan(angle / 2.0f);
+            f32 yScale = 1.0f / tangent;
+            f32 xScale = yScale / aspectRatio;
+
+            return float4x4 {
+                float4 { xScale },
+                float4 { 0.0f, yScale },
+                float4 { 0.0f, 0.0f, (far + near) / (near - far), (2.0f * far * near) / (near - far) },
+                float4 { 0.0f, 0.0f, -1.0f },
+            };
+        }
+        
         inline quaternion float4x4::toRotation() const {
             f32 trace = this->values[0][0] + this->values[1][1] + this->values[2][2];
             if (trace > 0) {
@@ -1048,11 +1110,14 @@ namespace achilles {
             };
         }
 
-        inline float4x4 float4x4::lookAt(float3 direction, float3 up) {
-            float3 z = direction.normalized();
-            float3 x = up.cross(z).normalized();
-            float3 y = z.cross(x);
-            return float4x4 { x, y, z };
+        inline float4x4 float4x4::lookAt(float3 point, float3 eye, float3 up) {
+            float3 destination = point - eye;
+            float3 forward = destination.normalized();
+            float3 right = up.normalized().cross(forward);
+            float3 localUp = forward.cross(right);
+            float4x4 result = float4x4 { right, localUp, forward, eye };
+            // result.rows.d.w = 1.0f;
+            return result;
         }
     }
 }
