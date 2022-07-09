@@ -15,8 +15,10 @@ inline defer_t<F> defer_f(F &&f) {
     return defer_t<F>(static_cast<F &&>(f));
 }
 
-#define macro_concat(x, y) x##y
-#define macro_concat2(x, y) macro_concat(x, y)
+#if !defined(macro_concat)
+    #define macro_concat(x, y) x##y
+    #define macro_concat2(x, y) macro_concat(x, y)
+#endif
 #define defer(code) auto macro_concat2(d_defer_, __COUNTER__) = defer_f([&]() -> void { code;})
 
 #endif
