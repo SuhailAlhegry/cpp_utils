@@ -277,6 +277,7 @@ namespace achilles {
             quaternion & normalize();
             quaternion normalized() const;
             void toAngleAxis(f32 &outAngle, float3 &outAxis) const;
+            static quaternion fromAngleAxis(f32 angle, float3 axis);
             static quaternion lookRotation(float3 direction, float3 up = float3::up());
         };
 
@@ -828,8 +829,19 @@ namespace achilles {
             outAngle = 2 * atan2f(mag, this->w);
         }
 
+        inline quaternion quaternion::fromAngleAxis(f32 angle, float3 axis) {
+            f32 sin2 = std::sin(angle / 2);
+            f32 cos2 = std::cos(angle / 2);
+            return quaternion {
+                axis.x * sin2,
+                axis.y * sin2,
+                axis.z * sin2,
+                cos2,
+            };
+        }
+
         inline quaternion quaternion::lookRotation(float3 direction, float3 up) {
-            return float4x4::lookAt(direction, up).toRotation();
+            return float4x4::lookAt(direction, float3::zero(), up).toRotation();
         }
         
         constexpr float4x4 float4x4::operator +(float4x4 m) const {
@@ -1111,12 +1123,14 @@ namespace achilles {
         }
 
         inline float4x4 float4x4::lookAt(float3 point, float3 eye, float3 up) {
-            float3 destination = point - eye;
-            float3 forward = destination.normalized();
-            float3 right = up.normalized().cross(forward);
-            float3 localUp = forward.cross(right);
-            float4x4 result = float4x4 { right, localUp, forward, eye };
-            // result.rows.d.w = 1.0f;
+            up.normalize();
+            float3 forward = (point - eye).normalized();
+            float3 right = forward.cross(up).normalized();
+            float3 localUp = right.cross(forward);
+            float4x4 result = float4x4 { right, localUp, forward };
+            result.values[0][3] = eye.x;
+            result.values[1][3] = eye.y;
+            result.values[2][3] = eye.z;
             return result;
         }
     }
