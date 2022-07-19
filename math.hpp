@@ -36,7 +36,6 @@ namespace achilles {
         constexpr inline bool nearlyEqual(f32 a, f32 b, f32 epsilon) {
             if (a == b) return true;
             f32 diff = abs(a - b);
-            printf("diff: %f\n", diff);
             return diff < epsilon;
         }
 
@@ -294,6 +293,7 @@ namespace achilles {
             quaternion & normalize();
             quaternion normalized() const;
             void toAngleAxis(f32 &outAngle, float3 &outAxis) const;
+            float3 toEulerAngles() const;
             static quaternion fromAngleAxis(f32 angle, float3 axis);
             static quaternion lookRotation(float3 point, float3 eye = float3::zero(), float3 up = float3::up());
             static quaternion fromEulerAngles(float3 angles);
@@ -847,15 +847,20 @@ namespace achilles {
         }
 
         inline void quaternion::toAngleAxis(f32 &outAngle, float3 &outAxis) const {
-            float3 axis{ this->x, this->y, this->z };
-            axis.normalize();
-            f32 mag = axis.magnitude();
-            if (mag == 0.0f) {
-                outAxis = float3(1.0f);
+            quaternion q;
+            if (scalar > 1.0f) {
+                q = this->normalized();
             } else {
-                outAxis = axis;
+                q = *this;
             }
-            outAngle = 2 * atan2f(mag, this->w);
+            outAngle = 2.0f * std::acos(q.scalar);
+            f32 s     = fisqrt(1.0f - q.scalar * q.scalar);
+            outAxis = float3 { q.x, q.y, q.z };
+            if (nearlyEqual(s, 0.0f, 0.001f)) {
+                return;
+            } else {
+                outAxis *= s;
+            }
         }
 
         inline quaternion quaternion::fromAngleAxis(f32 angle, float3 axis) {
@@ -880,6 +885,27 @@ namespace achilles {
             quaternion z = quaternion::fromAngleAxis(angles.z, float3::forward());
 
             return x * y * z;
+        }
+
+        inline float3 quaternion::toEulerAngles() const {
+            float3 result;
+
+            f32 xsc = 2.0f * (w * x + y * z);
+            f32 xcc = 1.0f - 2.0f * (x * x + y * y);
+            result.x = std::atan2(xsc, xcc);
+
+            f32 sin = 2.0f * (w * y - z * x);
+            if (abs(sin) >= 1.0f) {
+                result.y = (TAU / 4) * sign(sin);
+            } else {
+                result.y = std::asin(sin);
+            }
+
+            f32 zsc = 2.0f * (w * z + x * y);
+            f32 zcc = 1.0f - 2.0f * (y * y + z * z);
+            result.z = std::atan2(zsc, zcc);
+
+            return result;
         }
         
         constexpr float4x4 float4x4::operator +(float4x4 m) const {
@@ -1200,22 +1226,29 @@ namespace achilles {
         }
 
         inline float4x4 float4x4::eulerAngles(float3 angles) {
+            f32 sinx = std::sin(angles.x);
+            f32 cosx = std::cos(angles.x);
+            f32 siny = std::sin(angles.y);
+            f32 cosy = std::cos(angles.y);
+            f32 sinz = std::sin(angles.z);
+            f32 cosz = std::cos(angles.z);
+
             float4x4 x {
-                float4 { 1.0f,              0.0f,                 0.0f, },
-                float4 { 0.0f, std::cos(angles.x), -std::sin(angles.x), },
-                float4 { 0.0f, std::sin(angles.x),  std::cos(angles.x), },
+                float4 { 1.0f, 0.0f,  0.0f, },
+                float4 { 0.0f, cosx, -sinx, },
+                float4 { 0.0f, sinx,  cosx, },
             };
 
             float4x4 y {
-                float4 {  std::cos(angles.y),              0.0f, std::sin(angles.y), },
-                float4 {                0.0f,              1.0f,               0.0f, },
-                float4 { -std::sin(angles.y),              0.0f, std::cos(angles.y), },
+                float4 {  cosy, 0.0f, siny, },
+                float4 {  0.0f, 1.0f, 0.0f, },
+                float4 { -siny, 0.0f, cosy, },
             };
 
             float4x4 z {
-                float4 { std::cos(angles.z), -std::sin(angles.z),              0.0f, },
-                float4 { std::sin(angles.z),  std::cos(angles.z),              0.0f, },
-                float4 {               0.0f,                0.0f,              1.0f, },
+                float4 { cosz, -sinz, 0.0f, },
+                float4 { sinz,  cosz, 0.0f, },
+                float4 { 0.0f,  0.0f, 1.0f, },
             };
 
             return x * y * z;
