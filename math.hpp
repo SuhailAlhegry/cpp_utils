@@ -296,6 +296,7 @@ namespace achilles {
             void toAngleAxis(f32 &outAngle, float3 &outAxis) const;
             static quaternion fromAngleAxis(f32 angle, float3 axis);
             static quaternion lookRotation(float3 point, float3 eye = float3::zero(), float3 up = float3::up());
+            static quaternion fromEulerAngles(float3 angles);
         };
 
         union float4x4 {
@@ -341,7 +342,7 @@ namespace achilles {
             constexpr static float4x4 translate(float3 t);
             constexpr static float4x4 perspectiveDX(f32 fov, f32 aspectRatio, f32 near, f32 far);
             constexpr static float4x4 perspectiveGL(f32 fov, f32 aspectRatio, f32 near, f32 far);
-            constexpr static float4x4 eulerAngles(float3 angles);
+            static float4x4 eulerAngles(float3 angles);
             static float4x4 lookAt(float3 point, float3 eye = float3::zero(), float3 up = float3::up());
         };
         
@@ -793,23 +794,26 @@ namespace achilles {
         }
 
         constexpr float3 quaternion::operator *(float3 v) const {
-            f32 x = this->x * 2.0f;
-            f32 y = this->y * 2.0f;
-            f32 z = this->z * 2.0f;
-            f32 xx = this->x * x;
-            f32 yy = this->y * y;
-            f32 zz = this->z * z;
-            f32 xy = this->x * y;
-            f32 xz = this->x * z;
-            f32 yz = this->y * z;
-            f32 wx = this->w * x;
-            f32 wy = this->w * y;
-            f32 wz = this->w * z;
+            f32 x2 = this->x + this->x;
+            f32 y2 = this->y + this->y;
+            f32 z2 = this->z + this->z;
+
+            f32 yy = this->y * y2;
+            f32 xy = this->x * y2;
+            f32 xz = this->x * z2;
+            f32 yz = this->y * z2;
+
+            f32 zz = this->z * z2;
+            f32 wz = this->w * z2;
+            f32 wy = this->w * y2;
+            f32 wx = this->w * x2;
+
+            f32 xx = this->x * x2;
             
             return float3 {
-                (1.0f - (yy + zz)) * v.x + (xy - wz) * v.y + (xz + wy) * v.z,
-                (xy + wz) * v.x + (1.0f - (xx + zz)) * v.y + (yz - wx) * v.z,
-                (xz - wy) * v.x + (yz + wx) * v.y + (1.0f - (xx + yy)) * v.z,
+                (1.0f - yy - zz) * v.x + (xy - wz) * v.y + (xz + wy) * v.z,
+                (xy + wz) * v.x + (1.0f - xx - zz) * v.y + (yz - wx) * v.z,
+                (xz - wy) * v.x + (yz + wx) * v.y + (1.0f - xx - yy) * v.z,
             };
         }
 
@@ -868,6 +872,14 @@ namespace achilles {
 
         inline quaternion quaternion::lookRotation(float3 point, float3 eye, float3 up) {
             return float4x4::lookAt(point, eye, up).toRotation();
+        }
+
+        inline quaternion quaternion::fromEulerAngles(float3 angles) {
+            quaternion x = quaternion::fromAngleAxis(angles.x, float3::right());
+            quaternion y = quaternion::fromAngleAxis(angles.y, float3::up());
+            quaternion z = quaternion::fromAngleAxis(angles.z, float3::forward());
+
+            return x * y * z;
         }
         
         constexpr float4x4 float4x4::operator +(float4x4 m) const {
@@ -1016,12 +1028,12 @@ namespace achilles {
         }
 
         constexpr float4 float4x4::operator *(float4 v) const {
-            return (
-                v.x * this->rows.a +
-                v.y * this->rows.b +
-                v.z * this->rows.c +
-                v.w * this->rows.d
-            );
+            return float4 {
+                v.dot(this->rows.a),
+                v.dot(this->rows.b),
+                v.dot(this->rows.c),
+                v.dot(this->rows.d),
+            };
         }
 
         constexpr float3 float4x4::operator *(float3 v) const {
@@ -1060,10 +1072,10 @@ namespace achilles {
             f32 xx = q.x * x2;
 
             return float4x4 {
-                float4 { -yy - zz + 1.0f,         xy + wz,         xz - wy, 0.0f },
-                float4 {         xy - wz, -xx - zz + 1.0f,         yz + wx, 0.0f },
-                float4 {         xz + wy,         yz - wx, -xx - yy + 1.0f, 0.0f },
-                float4 {            0.0f,            0.0f,            0.0f, 1.0f },
+                float4 { 1.0f - yy - zz,         xy - wz,         xz + wy, 0.0f },
+                float4 {        xy + wz,  1.0f - xx - zz,         yz - wx, 0.0f },
+                float4 {        xz - wy,         yz + wx,  1.0f - xx - yy, 0.0f },
+                float4 {           0.0f,            0.0f,            0.0f, 1.0f },
             };
         }
 
@@ -1187,7 +1199,7 @@ namespace achilles {
             };
         }
 
-        constexpr inline float4x4 float4x4::eulerAngles(float3 angles) {
+        inline float4x4 float4x4::eulerAngles(float3 angles) {
             float4x4 x {
                 float4 { 1.0f,              0.0f,                 0.0f, },
                 float4 { 0.0f, std::cos(angles.x), -std::sin(angles.x), },
