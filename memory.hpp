@@ -257,38 +257,38 @@ namespace achilles {
             static_region() {}
 
             static_region(const static_region &other) {
-                if (other._data == this->_data) return;
+                if (+other._data == +this->_data) return;
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region(const static_region &&other) {
-                if (other._data == this->_data) return;
+                if (+other._data == +this->_data) return;
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region &operator=(const static_region &other) {
-                if (other._data == this->_data) return *this;
+                if (+other._data == +this->_data) return *this;
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             static_region &operator=(const static_region &&other) {
-                if (other._data == this->_data) return *this;
+                if (+other._data == +this->_data) return *this;
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
             }
 
             bool operator ==(const static_region &other) const {
-                return this->_data == other._data;
+                return +this->_data == +other._data;
             }
 
             bool operator !=(const static_region &other) const {
-                return this->_data != other._data;
+                return +this->_data != +other._data;
             }
             bool operator ==(const static_region &&other) const {
-                return this->_data == other._data;
+                return +this->_data == +other._data;
             }
 
             bool operator !=(const static_region &&other) const {
-                return this->_data != other._data;
+                return +this->_data != +other._data;
             }
 
             T &operator[](u64 index) {
