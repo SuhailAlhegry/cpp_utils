@@ -1157,7 +1157,7 @@ namespace achilles {
         constexpr float4x4 float4x4::perspectiveDX(f32 fov, f32 aspectRatio, f32 near, f32 far) {
             f32 tangent = std::tan(fov * 0.5f);
             f32 yScale = 1.0f / tangent;
-            f32 xScale = yScale * aspectRatio;
+            f32 xScale = yScale / aspectRatio;
             f32 a      = far / (far - near);
             f32 h      = - near * a;
 
@@ -1173,7 +1173,7 @@ namespace achilles {
         constexpr float4x4 float4x4::perspectiveGL(f32 fov, f32 aspectRatio, f32 near, f32 far) {
             f32 tangent = std::tan(fov * 0.5f);
             f32 yScale = 1.0f / tangent;
-            f32 xScale = yScale * aspectRatio;
+            f32 xScale = yScale / aspectRatio;
             f32 a      = - (far + near) / (far - near);
             f32 h      = (2.0f * far * near) / (far - near);
 
