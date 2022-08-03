@@ -933,6 +933,26 @@ namespace achilles {
                 return !(*this == static_cast<relative_pointer<C, W> &&>(other));
             }
 
+            bool operator==(const T *&other) {
+                return isValid() && (reinterpret_cast<T *>(base + offset) == other);
+            }
+
+            bool operator==(T *&&other) {
+                return isValid() && (reinterpret_cast<T *>(base + offset) == other);
+            }
+
+            bool operator!=(const T *&other) {
+                return !(*this == other);
+            }
+
+            bool operator!=(T *&&other) {
+                return !(*this == static_cast<T *&&>(other));
+            }
+
+            operator bool() {
+                return isValid();
+            }
+
             T & operator *() {
                 return *reinterpret_cast<T *>(base + offset);
             }
