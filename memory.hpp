@@ -863,6 +863,103 @@ namespace achilles {
             u64 _length = 0;
             u64 _capacity = 0;
         };
+
+        template<typename T, typename W>
+        struct relative_pointer {
+            W   *base   = nullptr;
+            u64  offset = 0;
+
+            relative_pointer() {}
+
+            relative_pointer(W *base, u64 offset = 0) : base(base), offset(offset) {
+                aassert(base != nullptr, "relative pointer base is null");
+            }
+
+            relative_pointer(const relative_pointer &other) {
+                base = other.base;
+                offset = other.offset;
+            }
+
+            relative_pointer(relative_pointer &&other) {
+                base = other.base;
+                offset = other.offset;
+            }
+
+            relative_pointer & operator=(const relative_pointer &other) {
+                base = other.base;
+                offset = other.offset;
+                return *this;
+            }
+
+            relative_pointer & operator=(relative_pointer &&other) {
+                base = other.base;
+                offset = other.offset;
+                return *this;
+            }
+
+            bool operator==(const relative_pointer &other) {
+                return base == other.base && offset == other.offset;
+            }
+
+            bool operator==(relative_pointer &&other) {
+                return base == other.base && offset == other.offset;
+            }
+
+            bool operator!=(const relative_pointer &other) {
+                return !(*this == other);
+            }
+
+            bool operator!=(relative_pointer &&other) {
+                return !(*this == static_cast<relative_pointer &&>(other));
+            }
+
+            template<typename C>
+            bool operator==(const relative_pointer<C, W> &other) {
+                return base == other.base && offset == other.offset;
+            }
+
+            template<typename C>
+            bool operator==(relative_pointer<C, W> &&other) {
+                return base == other.base && offset == other.offset;
+            }
+
+            template<typename C>
+            bool operator!=(const relative_pointer<C, W> &other) {
+                return !(*this == other);
+            }
+
+            template<typename C>
+            bool operator!=(relative_pointer<C, W> &&other) {
+                return !(*this == static_cast<relative_pointer<C, W> &&>(other));
+            }
+
+            T & operator *() {
+                return *reinterpret_cast<T *>(base + offset);
+            }
+
+            T * operator->() {
+                return reinterpret_cast<T *>(base + offset);
+            }
+
+            template<typename C>
+            explicit operator C *() {
+                static_assert(sizeof(C) <= sizeof(T));
+                return reinterpret_cast<C *>(base + offset);
+            }
+
+            template<typename C>
+            explicit operator relative_pointer<C, W>() {
+                static_assert(sizeof(C) <= sizeof(T));
+                return relative_pointer<C, W> {
+                    base,
+                    offset,
+                };
+            }
+
+            bool isValid() {
+                return base != nullptr;
+            }
+        };
     }
 }
 
