@@ -585,7 +585,7 @@ namespace achilles {
             }
 
             u64 size() const {
-                return _region.length();
+                return _length;
             }
 
             memory_view<T> view(u64 low, u64 high) {
@@ -706,7 +706,7 @@ namespace achilles {
             }
 
             constexpr u64 size() const {
-                return _size;
+                return _length;
             }
 
             memory_view<T> view(u64 low, u64 high) {
@@ -814,7 +814,7 @@ namespace achilles {
             }
 
             u64 size() const {
-                return _capacity;
+                return _length;
             }
 
             bool isValid() const {
