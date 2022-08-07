@@ -238,7 +238,7 @@ namespace achilles {
             memory_view<T> view(u64 low, u64 high) {
                 aassert(isValid(), "trying to create a memory view from an invalid region");
                 aassert(high > low, "trying to create a memory view with an invalid high bound");
-                aassert(high < _length, "trying to create a memory view with an invalid high bound");
+                aassert(high <= _length, "trying to create a memory view with an invalid high bound");
                 return memory_view<T>(_memory, low, high);
             }
         private:
@@ -411,6 +411,16 @@ namespace achilles {
 
             bool isValid() const {
                 return _memory != nullptr && _high > _low;
+            }
+
+            memory_view view(u64 low, u64 high) {
+                aassert(isValid(), "trying to create a view to an invalid memory view");
+                aassert(high <= _high, "trying to create a view with an out of bound high value");
+                return memory_view {
+                    _memory,
+                    low,
+                    high,
+                };
             }
         private:
             T *_memory;
@@ -589,11 +599,13 @@ namespace achilles {
             }
 
             memory_view<T> view(u64 low, u64 high) {
+                aassert(_length > 0, "trying to create a view to an empty array");
                 return _region.view(low, high);
             }
 
             array_view<T> arrayView() {
                 aassert(isValid(), "trying to make a view of an invalid array");
+                aassert(_length > 0, "trying to create an array view to an empty static array");
                 return array_view<T>(&_region, _length, _region.length());
             }
         private:
@@ -710,11 +722,13 @@ namespace achilles {
             }
 
             memory_view<T> view(u64 low, u64 high) {
+                aassert(_length > 0, "trying to create a view to an empty static array");
                 return _region.view(low, high);
             }
             
             array_view<T> arrayView() {
                 aassert(isValid(), "trying to make a view of an invalid static array");
+                aassert(_length > 0, "trying to create an array view to an empty static array");
                 return array_view<T>(&_region, _length, _region.length());
             }
         private:
@@ -858,6 +872,18 @@ namespace achilles {
                 return pop();
             }
 
+            memory_view<T> view(u64 low, u64 high) {
+                aassert(isValid(), "trying to create a view to an invalid array view");
+                aassert(_length > 0, "trying to create a view to an empty array view");
+                aassert(low < high, "trying to create a view with an invalid low bound");
+                aassert(high <= _length, "trying to create a view with an invalid high bound");
+
+                return memory_view<T> {
+                    _memory,
+                    low,
+                    high,
+                };
+            }
         private:
             T *_memory = nullptr;
             u64 _length = 0;
