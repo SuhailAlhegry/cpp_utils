@@ -444,16 +444,12 @@ namespace achilles {
                 }
             }
 
-            array(const array &other) {
+            array(const array &other) : _region(other._region), _length(other._length) {
                 aassert(other.isValid(), "the underlying memory region of the copied array is invalid");
-                _region = region_t(other._region);
-                _length = other._length;
             }
 
-            array(array &&other) {
+            array(array &&other) : _region(other._region), _length(other._length) {
                 aassert(other.isValid(), "the underlying memory region of the copied array is invalid");
-                _region = region_t(static_cast<array &&>(other._region));
-                _length = other._length;
             }
 
             array &operator=(const array &other) {
@@ -605,7 +601,6 @@ namespace achilles {
 
             array_view<T> arrayView() {
                 aassert(isValid(), "trying to make a view of an invalid array");
-                aassert(_length > 0, "trying to create an array view to an empty static array");
                 return array_view<T>(&_region, _length, _region.length());
             }
         private:
@@ -728,7 +723,6 @@ namespace achilles {
             
             array_view<T> arrayView() {
                 aassert(isValid(), "trying to make a view of an invalid static array");
-                aassert(_length > 0, "trying to create an array view to an empty static array");
                 return array_view<T>(&_region, _length, _region.length());
             }
         private:
