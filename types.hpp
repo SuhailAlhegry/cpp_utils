@@ -26,14 +26,14 @@ constexpr u32 U32_MAX = 0xFFFFFFFF;
 constexpr u16 U16_MAX = 0xFFFF;
 constexpr u8  U8_MAX  = 0xFF;
 
-constexpr s64 S64_MAX = 0x7FFFFFFFFFFFFFFF;
-constexpr s64 S64_MIN = 0x8000000000000000;
-constexpr s32 S32_MAX = 0x7FFFFFFF;
-constexpr s32 S32_MIN = 0x80000000;
-constexpr s16 S16_MAX = 0x7FFF;
-constexpr s16 S16_MIN = 0x8000;
-constexpr s8  S8_MAX  = 0x7F;
-constexpr s8  S8_MIN  = 0x80;
+constexpr s64 S64_MAX =  0x7FFFFFFFFFFFFFFF;
+constexpr s64 S64_MIN = -0x8000000000000000;
+constexpr s32 S32_MAX =  0x7FFFFFFF;
+constexpr s32 S32_MIN = -0x80000000;
+constexpr s16 S16_MAX =  0x7FFF;
+constexpr s16 S16_MIN = -0x8000;
+constexpr s8  S8_MAX  =  0x7F;
+constexpr s8  S8_MIN  = -0x80;
 
 
 #endif
