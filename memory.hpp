@@ -866,10 +866,10 @@ namespace achilles {
 
         template<typename T, typename W>
         struct relative_pointer {
-            W   *base   = nullptr;
-            u64  offset = 0;
+            W   *base;
+            u64  offset;
 
-            relative_pointer() {}
+            relative_pointer() : base(nullptr), offset(0) {}
 
             relative_pointer(W *base, u64 offset = 0) : base(base), offset(offset) {
                 aassert(base != nullptr, "relative pointer base is null");
@@ -963,13 +963,13 @@ namespace achilles {
 
             template<typename C>
             explicit operator C *() {
-                static_assert(sizeof(C) <= sizeof(T));
+                static_assert(sizeof(C) <= sizeof(T), "cannot cast relative pointer to a type of higher size");
                 return reinterpret_cast<C *>(base + offset);
             }
 
             template<typename C>
             explicit operator relative_pointer<C, W>() {
-                static_assert(sizeof(C) <= sizeof(T));
+                static_assert(sizeof(C) <= sizeof(T), "cannot cast relative pointer to a type of higher size");
                 return relative_pointer<C, W> {
                     base,
                     offset,
