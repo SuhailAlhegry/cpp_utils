@@ -1,6 +1,8 @@
 #if !defined(ACHILLES_TYPES_HPP)
 #define ACHILLES_TYPES_HPP
 
+#include "misc.hpp"
+
 using u64 = unsigned long long;
 using u32 = unsigned int;
 using u16 = unsigned short;
@@ -13,9 +15,6 @@ using s8  = signed char;
 
 using f64 = double;
 using f32 = float;
-
-#define macro_concat(a, b) a##b
-#define macro_concat2(a, b) macro_concat(a, b)
 
 #define Unsigned(nbits) macro_concat2(u, nbits)
 #define Signed(nbits) macro_concat2(s, nbits)
@@ -34,7 +33,6 @@ constexpr s16 S16_MAX =  0x7FFF;
 constexpr s16 S16_MIN = -0x8000;
 constexpr s8  S8_MAX  =  0x7F;
 constexpr s8  S8_MIN  = -0x80;
-
 
 #endif
 
