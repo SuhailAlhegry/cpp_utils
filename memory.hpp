@@ -70,6 +70,7 @@ namespace achilles {
                 }
                 this->ptr = other.ptr;
                 this->isCopy = true;
+                return *this;
             }
             
             address &operator=(address &&other) {
@@ -79,6 +80,7 @@ namespace achilles {
                 }
                 this->ptr = other.ptr;
                 other.ptr = nullptr;
+                return *this;
             }
 
             bool operator ==(const address &other) const {
@@ -165,6 +167,7 @@ namespace achilles {
                 this->_memory = other._memory;
                 this->_length = other._length;
                 this->isCopy = true;
+                return *this;
             }
 
             region &operator=(const region &&other) {
@@ -175,6 +178,7 @@ namespace achilles {
                 aassert(other._memory != nullptr, "trying to assign an invalid region");
                 this->_memory = other._memory;
                 this->_length = other._length;
+                return *this;
             }
 
             ~region() {
@@ -269,11 +273,13 @@ namespace achilles {
             static_region &operator=(const static_region &other) {
                 if (+other._data == +this->_data) return *this;
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
+                return *this;
             }
 
             static_region &operator=(const static_region &&other) {
                 if (+other._data == +this->_data) return *this;
                 std::memcpy((u8 *) this->_data, (u8 *) other._data, _length * sizeof(T));
+                return *this;
             }
 
             bool operator ==(const static_region &other) const {
@@ -359,6 +365,7 @@ namespace achilles {
                 _memory = other._memory;
                 _low = other._low;
                 _high = other._high;
+                return *this;
             }
 
             memory_view &operator =(
@@ -372,6 +379,7 @@ namespace achilles {
                 other._memory = nullptr;
                 other._low = 0;
                 other._high = 0;
+                return *this;
             }
 
             bool operator==(const memory_view &other) const {
@@ -434,7 +442,7 @@ namespace achilles {
         template<typename T, fn_allocator allocator_f, fn_deallocator deallocator_f, bool autoDestroy = true>
         struct array {
             using type = T;
-            using region_t = region<T, allocator_f, deallocator_f>;
+            using region_t = region<T, allocator_f, deallocator_f, autoDestroy>;
 
             array(u64 capacity = 8) : _region(region_t(capacity)), _length(0) {}
 
@@ -457,14 +465,16 @@ namespace achilles {
                 aassert(other.isValid(), "the underlying memory region of the copied array is invalid");
                 _region = region_t(other._region);
                 _length = other._length;
+                return *this;
             }
 
             array &operator=(array &&other) {
                 aassert(!_region.isValid(), "the underlying memory region of the target array is still valid, destroy the array first before assigning a new value");
                 aassert(other.isValid(), "the underlying memory region of the copied array is invalid");
-                _region = region_t(static_cast<array &&>(other._region));
+                _region = region_t(static_cast<region_t &&>(other._region));
                 _length = other._length;
                 other._length = 0;
+                return *this;
             }
 
             ~array() {
