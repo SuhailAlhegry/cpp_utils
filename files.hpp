@@ -26,7 +26,7 @@ namespace achilles {
                 std::fseek(file, 0, SEEK_END);
                 u64 fileSize = ftell(file) / typeSize;
                 std::rewind(file);
-                memory::region<T, allocator_f, deallocator_f> memory(fileSize);
+                memory::region<T, allocator_f, deallocator_f, autoDestroy> memory(fileSize);
                 u64 totalBytesRead = 0;
                 T buffer[READ_BUFFER_SIZE];
                 while (!std::feof(file)) {
@@ -40,7 +40,7 @@ namespace achilles {
                 return memory;
             }
             
-            return memory::region<T, allocator_f, deallocator_f>::invalid();
+            return memory::region<T, allocator_f, deallocator_f, autoDestroy>::invalid();
         }
 
         template<typename memory_holder_t>
