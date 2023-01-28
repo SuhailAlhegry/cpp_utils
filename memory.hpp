@@ -1,3 +1,4 @@
+#include <malloc.h>
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
@@ -32,8 +33,15 @@ namespace achilles {
             Block(Block &&other) {
                 memory = other.memory;
                 size = other.size;
-                other.memory = nullptr;
-                other.size = 0;
+                other.invalidate();
+            }
+
+            Block &operator =(Block &&other) {
+                aassert(!isValid(), "trying to assign a new value to an already valid block, deallocate the block first.");
+                memory = other.memory;
+                size = other.size;
+                other.invalidate();
+                return *this;
             }
 
             ~Block() {
@@ -49,6 +57,11 @@ namespace achilles {
                 return memory != nullptr && size > 0;
             }
 
+            void invalidate() {
+                memory = nullptr;
+                size = 0;
+            }
+
             u8 *memory;
             u64 size;
         };
@@ -58,6 +71,8 @@ namespace achilles {
             Slice(T *memory, u64 size) : _memory{memory}, _size{size} {}
             Slice(Slice const &other) = default;
             Slice(Slice &&other) = default;
+            Slice &operator=(Slice const &other) = default;
+            Slice &operator=(Slice &&other) = default;
 
             operator T *() const {
                 return (T *) _memory;
@@ -87,12 +102,21 @@ namespace achilles {
         struct Array {
             using type = T;
 
-            Array(Allocator &allocator, u64 capacity = 8) : _allocator{allocator} {
-                Block blk = allocator.allocate(capacity * sizeof(type));
-                _block.memory = blk.memory;
-                _block.size = blk.size;
-                blk.memory = nullptr;
-                blk.size = 0;
+            Array(Allocator *allocator, u64 capacity = 8) : _allocator{allocator} {
+                aassert(allocator != nullptr, "using a null allocator to initialize an array");
+                _block = allocator->allocate(capacity * sizeof(type));
+            }
+
+            Array(Array &&other) : _allocator{other._allocator}, _block{(Block &&) other._block}, _size{other._size} {
+                other._size = 0;
+            }
+
+            Array & operator=(Array &&other) {
+                aassert(!isValid(), "trying to assign a new value to a valid array, destroy the array first.");
+                _allocator = other._allocator;
+                _block = other._block;
+                _size = other._size;
+                return *this;
             }
 
             u64 size() const {
@@ -104,13 +128,13 @@ namespace achilles {
             }
 
             bool isValid() const {
-                return _block.isValid();
+                return _allocator != nullptr && _block.isValid();
             }
 
             bool push(type value) {
                 if (!isValid()) return false;
                 if (capacity() == _size) {
-                    if (!_allocator.tryResize(_block, _block.size * 2)) {
+                    if (!_allocator->tryResize(_block, _block.size * 2)) {
                         return false;
                     }
                 }
@@ -138,7 +162,8 @@ namespace achilles {
             }
 
             void destroy() {
-                _allocator.deallocate(_block);
+                if (!isValid()) return;
+                _allocator->deallocate(_block);
                 clear();
             }
 
@@ -146,7 +171,7 @@ namespace achilles {
                 return _block;
             }
         private:
-            Allocator &_allocator;
+            Allocator *_allocator;
             Block _block { nullptr, 0 };
             u64 _size = 0;
         };
