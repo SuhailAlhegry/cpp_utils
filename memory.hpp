@@ -54,6 +54,36 @@ namespace achilles {
         };
 
         template<typename T>
+        struct Slice {
+            Slice(T *memory, u64 size) : _memory{memory}, _size{size} {}
+            Slice(Slice const &other) = default;
+            Slice(Slice &&other) = default;
+
+            operator T *() const {
+                return (T *) _memory;
+            }
+
+            bool isValid() const {
+                return _memory != nullptr && _size > 0;
+            }
+
+            u64 size() const { return _size; }
+
+            T & get(u64 index) const {
+                aassert(isValid(), "trying to access an invalid slice");
+                aassert(index <= _size && index >= 0, "slice index out of range");
+                return _memory[index];
+            }
+
+            T & operator[](u64 index) const {
+                return get(index);
+            }
+        private:
+            T *_memory;
+            u64 _size;
+        };
+
+        template<typename T>
         struct Array {
             using type = T;
 
