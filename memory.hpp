@@ -5,6 +5,7 @@
 // this file depends on <cstring> for 'std::memcpy' and friends
 // should be able to remove this dependency when providing own 'std::memcpy' implementation
 #include <cstring>
+#include <utility>
 // require cstdlib for malloc, free
 #include <cstdlib>
 #include <initializer_list>
@@ -67,6 +68,63 @@ namespace achilles {
         };
 
         template<typename T>
+        struct Address {
+            Address(Block &&block) : _memory{ nullptr, 0 } {
+                // TOOD: allow for alignment
+                aassert(block.size >= sizeof(T), "assigning a of a different size to an address");
+                _memory = (Block &&) block;
+            }
+
+            Address(void *ptr) : _memory { nullptr, 0 } {
+                aassert(ptr == nullptr, "assigning a valid raw pointer to address");
+            }
+
+            Address(Address &&other) : _memory((Block &&) other._memory) {}
+
+            ~Address() {
+                aassert(!_memory.isValid(), "address memory leak");
+            }
+
+            Address & operator=(Address &&other) {
+                _memory = (Block &&) other._memory;
+                return *this;
+            }
+
+            operator Block&() {
+                return _memory;
+            }
+
+            T * operator->() const {
+                return _memory;
+            }
+
+            operator T*() const {
+                return _memory;
+            }
+
+            T & operator*() const {
+                aassert(isValid(), "dereferncing an invalid address");
+                T *ptr = _memory;
+                return *ptr;
+            }
+
+            template<typename TR>
+            operator Address<TR>() {
+                auto result = Address<TR> {
+                    (Block &&) _memory,
+                };
+                _memory.invalidate();
+                return result;
+            }
+
+            bool isValid() const {
+                return _memory.isValid();
+            }
+        private:
+            Block _memory;
+        };
+
+        template<typename T>
         struct Slice {
             Slice(T *memory, u64 size) : _memory{memory}, _size{size} {}
             Slice(Slice const &other) = default;
@@ -92,6 +150,13 @@ namespace achilles {
 
             T & operator[](u64 index) const {
                 return get(index);
+            }
+
+            Slice slice(u64 low, u64 high) const {
+                return Slice {
+                    _memory + low,
+                    high - low,
+                };
             }
         private:
             T *_memory;
@@ -139,22 +204,26 @@ namespace achilles {
                     }
                 }
                 type *memory = _block;
-                memory[_size++] = value;
+                memory[_size++] = std::move(value);
                 return true;
             }
 
-            type &pop() {
+            type & pop() {
                 aassert(isValid(), "popping from an invalid array");
                 aassert(_size > 0, "popping from an empty array");
                 type *memory = _block;
                 return memory[--_size];
             }
 
-            type &get(u64 index) const {
+            type & get(u64 index) const {
                 aassert(isValid(), "getting a value from an invalid array");
                 aassert(_size > 0, "getting a value from an empty array");
                 type *memory = _block;
                 return memory[index];
+            }
+
+            type & operator[](u64 index) const {
+                return get(index);
             }
 
             void clear() {
@@ -167,7 +236,7 @@ namespace achilles {
                 clear();
             }
 
-            Block &operator &() {
+            Block & operator &() {
                 return _block;
             }
         private:
