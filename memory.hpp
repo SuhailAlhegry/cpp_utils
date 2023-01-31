@@ -1,4 +1,5 @@
 #include <malloc.h>
+#include <type_traits>
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
@@ -71,7 +72,7 @@ namespace achilles {
         struct Address {
             Address(Block &&block) : _memory{ nullptr, 0 } {
                 // TOOD: allow for alignment
-                aassert(block.size >= sizeof(T), "assigning a of a different size to an address");
+                aassert(block.size >= sizeof(T), "address can hold a structure with a bigger size than the provided memory block");
                 _memory = (Block &&) block;
             }
 
@@ -110,11 +111,15 @@ namespace achilles {
 
             template<typename TR>
             operator Address<TR>() {
-                auto result = Address<TR> {
-                    (Block &&) _memory,
-                };
-                _memory.invalidate();
-                return result;
+                if (isValid()) {
+                    auto result = Address<TR> {
+                        (Block &&) _memory,
+                    };
+                    _memory.invalidate();
+                    return result;
+                } else {
+                    return nullptr;
+                }
             }
 
             bool isValid() const {
@@ -196,7 +201,7 @@ namespace achilles {
                 return _allocator != nullptr && _block.isValid();
             }
 
-            bool push(type value) {
+            bool push(type &&value) {
                 if (!isValid()) return false;
                 if (capacity() == _size) {
                     if (!_allocator->tryResize(_block, _block.size * 2)) {
@@ -204,7 +209,29 @@ namespace achilles {
                     }
                 }
                 type *memory = _block;
-                memory[_size++] = std::move(value);
+                if constexpr (std::is_trivial_v<T>) {
+                    memory[_size++] = value;
+                } else {
+                    new (memory + _size) T(std::move(value));
+                    _size += 1;
+                }
+                return true;
+            }
+
+            bool push(type const &value) {
+                if (!isValid()) return false;
+                if (capacity() == _size) {
+                    if (!_allocator->tryResize(_block, _block.size * 2)) {
+                        return false;
+                    }
+                }
+                type *memory = _block;
+                if constexpr (std::is_trivial_v<T>) {
+                    memory[_size] = value;
+                } else {
+                    new (memory + _size) T(value);
+                }
+                _size += 1;
                 return true;
             }
 
