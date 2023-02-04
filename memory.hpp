@@ -1,5 +1,3 @@
-#include <malloc.h>
-#include <type_traits>
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
@@ -46,9 +44,11 @@ namespace achilles {
                 return *this;
             }
 
+            #if defined(ACHILLES_ENABLE_BLOCK_DESTRUCTOR_LEAK_DETECTION)
             ~Block() {
                 aassert(memory == nullptr, "memory leak");
             }
+            #endif
 
             template<typename T>
             operator T*() const {
@@ -82,9 +82,12 @@ namespace achilles {
 
             Address(Address &&other) : _memory((Block &&) other._memory) {}
 
+
+            #if defined(ACHILLES_ENABLE_BLOCK_DESTRUCTOR_LEAK_DETECTION)
             ~Address() {
                 aassert(!_memory.isValid(), "address memory leak");
             }
+            #endif
 
             Address & operator=(Address &&other) {
                 _memory = (Block &&) other._memory;
