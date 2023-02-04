@@ -1,6 +1,7 @@
 #if !defined(ACHILLES_TYPES_HPP)
 #define ACHILLES_TYPES_HPP
 
+#include <type_traits>
 #include "misc.hpp"
 
 using u64 = unsigned long long;
@@ -33,6 +34,75 @@ constexpr s16 S16_MAX =  0x7FFF;
 constexpr s16 S16_MIN = -0x8000;
 constexpr s8  S8_MAX  =  0x7F;
 constexpr s8  S8_MIN  = -0x80;
+
+namespace achilles {
+    namespace types {
+        using TypeHash = u64;
+
+        template<typename T>
+        struct remove_all {
+            using unref = std::remove_reference_t<T>;
+            using type = std::conditional_t<
+                    std::is_array_v<unref>,
+                    std::remove_all_extents_t<unref> *,
+                    unref
+                >;
+        };
+
+        template<typename T>
+        using remove_all_t = typename remove_all<T>::type;
+
+        // FNV-1a hash
+        template<typename T>
+        constexpr u64 typeHash() {
+            #if defined(_MSC_VER)
+                #define F __FUNCSIG__
+            #else
+                #define F __PRETTY_FUNCTION__
+            #endif
+            u64 prime = 0x00000100000001B3;
+            u64 offset = 0xcbf29ce484222325;
+            u64 hash = offset;
+            for (auto const c : F) {
+                hash ^= c;
+                hash *= prime;
+            }
+            return hash;
+            #undef F
+        }
+
+        template<typename T>
+        static constexpr TypeHash typehash = typeHash<remove_all_t<T>>();
+
+        struct Any {
+            Any() : _ptr{nullptr} {}
+
+            template<typename T>
+            Any(T const &v) : _type{typehash<T>}, _ptr{(void *) &v} {}
+            template<typename T>
+            Any(T &&v) : _type{typehash<T>}, _ptr{&v} {}
+
+            template<typename T>
+            T value() {
+                if constexpr (std::is_function_v<std::remove_pointer_t<T>>) {
+                    return (std::remove_pointer_t<T> *) _ptr;
+                } else if constexpr (std::is_pointer_v<T> || std::is_member_pointer_v<T>) {
+                    return (std::remove_pointer_t<T> *) _ptr;
+                } else {
+                    return *((T *) _ptr);
+                }
+            }
+
+            TypeHash type() const {
+                return _type;
+            }
+        private:
+            TypeHash _type;
+            void *_ptr;
+        };
+    };
+};
+
 
 #endif
 
