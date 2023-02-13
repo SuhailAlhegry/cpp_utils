@@ -8,6 +8,7 @@
 // require cstdlib for malloc, free
 #include <cstdlib>
 #include <initializer_list>
+#include <type_traits>
 #include "types.hpp"
 #include "assert.hpp"
 
@@ -72,7 +73,8 @@ namespace achilles {
         struct Address {
             Address(Block &&block) : _memory{ nullptr, 0 } {
                 // TOOD: allow for alignment
-                aassert(block.size >= sizeof(T), "address can hold a structure with a bigger size than the provided memory block");
+                aassert(block.size >= sizeof(T), types::type_name<T>);
+                // "T is larger than this address's memory block");
                 _memory = (Block &&) block;
             }
 
@@ -114,11 +116,27 @@ namespace achilles {
 
             template<typename TR>
             operator Address<TR>() {
+                static_assert(
+                    std::is_base_of_v<TR, T> || std::is_convertible_v<T, TR> || std::is_base_of_v<T, TR>,
+                    "cannot cast addresses with incompatible types, if you want to force it, use 'convert'"
+                );
                 if (isValid()) {
                     auto result = Address<TR> {
                         (Block &&) _memory,
                     };
                     _memory.invalidate();
+                    return result;
+                } else {
+                    return nullptr;
+                }
+            }
+
+            template<typename TR>
+            Address<TR> convert() {
+                if (isValid()) {
+                    auto result = Address<TR> {
+                        std::move(_memory),
+                    };
                     return result;
                 } else {
                     return nullptr;
@@ -177,7 +195,9 @@ namespace achilles {
 
             Array(Allocator *allocator, u64 capacity = 8) : _allocator{allocator} {
                 aassert(allocator != nullptr, "using a null allocator to initialize an array");
-                _block = allocator->allocate(capacity * sizeof(type));
+                if (capacity > 0) {
+                    _block = allocator->allocate(capacity * sizeof(type));
+                }
             }
 
             Array(Array &&other) : _allocator{other._allocator}, _block{(Block &&) other._block}, _size{other._size} {
