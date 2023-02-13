@@ -52,6 +52,16 @@ namespace achilles {
         template<typename T>
         using remove_all_t = typename remove_all<T>::type;
 
+        template<typename T>
+        constexpr auto typeName() {
+            #if defined(_MSC_VER)
+                #define F __FUNCSIG__
+            #else
+                #define F __PRETTY_FUNCTION__
+            #endif
+            return F;
+        }
+
         // FNV-1a hash
         template<typename T>
         constexpr u64 typeHash() {
@@ -72,7 +82,10 @@ namespace achilles {
         }
 
         template<typename T>
-        static constexpr TypeHash typehash = typeHash<remove_all_t<T>>();
+        static constexpr auto typehash = typeHash<remove_all_t<T>>();
+
+        template<typename T>
+        static constexpr auto type_name = typeName<remove_all_t<T>>();
 
         struct Any {
             Any() : _ptr{nullptr} {}
