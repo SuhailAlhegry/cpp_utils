@@ -37,6 +37,13 @@ namespace achilles {
                 other.invalidate();
             }
 
+            #if !defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
+            Block(Block const &other) {
+                memory = other.memory;
+                size = other.size;
+            }
+            #endif
+
             Block &operator =(Block &&other) {
                 aassert(!isValid(), "trying to assign a new value to an already valid block, deallocate the block first.");
                 memory = other.memory;
@@ -45,7 +52,16 @@ namespace achilles {
                 return *this;
             }
 
-            #if defined(ACHILLES_ENABLE_BLOCK_DESTRUCTOR_LEAK_DETECTION)
+            #if !defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
+            Block &operator =(Block const &other) {
+                aassert(!isValid(), "trying to assign a new value to an already valid block, deallocate the block first.");
+                memory = other.memory;
+                size = other.size;
+                return *this;
+            }
+            #endif
+
+            #if !defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
             ~Block() {
                 aassert(memory == nullptr, "memory leak");
             }
@@ -73,8 +89,7 @@ namespace achilles {
         struct Address {
             Address(Block &&block) : _memory{ nullptr, 0 } {
                 // TOOD: allow for alignment
-                aassert(block.size >= sizeof(T), types::type_name<T>);
-                // "T is larger than this address's memory block");
+                aassert(block.size >= sizeof(T), "T is larger than this address's memory block");
                 _memory = (Block &&) block;
             }
 
@@ -82,10 +97,12 @@ namespace achilles {
                 aassert(ptr == nullptr, "assigning a valid raw pointer to address");
             }
 
-            Address(Address &&other) : _memory((Block &&) other._memory) {}
+            Address(Address &&other) : _memory { (Block &&) other._memory } {}
+            #if !defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
+            Address(Address const &other) : _memory { (Block const &) other._memory } {}
+            #endif
 
-
-            #if defined(ACHILLES_ENABLE_BLOCK_DESTRUCTOR_LEAK_DETECTION)
+            #if defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
             ~Address() {
                 aassert(!_memory.isValid(), "address memory leak");
             }
@@ -107,6 +124,21 @@ namespace achilles {
             operator T*() const {
                 return _memory;
             }
+            
+            template<typename TR>
+            operator TR*() const {
+                static_assert(
+                    std::is_base_of_v<TR, T> || std::is_base_of_v<T, TR> ||
+                    std::is_convertible_v<T*, TR*> || std::is_convertible_v<TR*, T*>,
+                    "cannot cast to a pointer with incompatible types, if you want to force it, use 'cast'"
+                );
+                return _memory;
+            }
+
+            template<typename TR>
+            TR *cast() const {
+                return _memory;
+            }
 
             T & operator*() const {
                 aassert(isValid(), "dereferncing an invalid address");
@@ -117,7 +149,8 @@ namespace achilles {
             template<typename TR>
             operator Address<TR>() {
                 static_assert(
-                    std::is_base_of_v<TR, T> || std::is_convertible_v<T, TR> || std::is_base_of_v<T, TR>,
+                    std::is_base_of_v<TR, T> || std::is_base_of_v<T, TR> ||
+                    std::is_convertible_v<T*, TR*> || std::is_convertible_v<TR*, T*>,
                     "cannot cast addresses with incompatible types, if you want to force it, use 'convert'"
                 );
                 if (isValid()) {
@@ -200,8 +233,13 @@ namespace achilles {
                 }
             }
 
-            Array(Array &&other) : _allocator{other._allocator}, _block{(Block &&) other._block}, _size{other._size} {
+            Array(Array &&other)
+                : _allocator {other._allocator},
+                  _block {(Block &&) other._block},
+                  _size {other._size}
+            {
                 other._size = 0;
+                other._allocator = nullptr;
             }
 
             Array & operator=(Array &&other) {
@@ -280,10 +318,11 @@ namespace achilles {
                 _size = 0;
             }
 
-            void destroy() {
-                if (!isValid()) return;
+            bool destroy() {
+                if (!isValid()) return false;
                 _allocator->deallocate(_block);
                 clear();
+                return true;
             }
 
             Block & operator &() {
