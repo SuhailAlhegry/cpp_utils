@@ -61,7 +61,7 @@ namespace achilles {
             }
             #endif
 
-            #if !defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
+            #if defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
             ~Block() {
                 aassert(memory == nullptr, "memory leak");
             }
