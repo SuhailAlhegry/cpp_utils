@@ -31,18 +31,12 @@ namespace achilles {
 
         struct Block {
             Block(u8 *memory, u64 size) : memory{memory}, size{size} {}
+
             Block(Block &&other) {
                 memory = other.memory;
                 size = other.size;
                 other.invalidate();
             }
-
-            #if !defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
-            Block(Block const &other) {
-                memory = other.memory;
-                size = other.size;
-            }
-            #endif
 
             Block &operator =(Block &&other) {
                 aassert(!isValid(), "trying to assign a new value to an already valid block, deallocate the block first.");
@@ -52,18 +46,21 @@ namespace achilles {
                 return *this;
             }
 
-            #if !defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
+            #if defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
+            ~Block() {
+                aassert(memory == nullptr, "memory leak");
+            }
+            #else
+            Block(Block const &other) {
+                memory = other.memory;
+                size = other.size;
+            }
+
             Block &operator =(Block const &other) {
                 aassert(!isValid(), "trying to assign a new value to an already valid block, deallocate the block first.");
                 memory = other.memory;
                 size = other.size;
                 return *this;
-            }
-            #endif
-
-            #if defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
-            ~Block() {
-                aassert(memory == nullptr, "memory leak");
             }
             #endif
 
@@ -88,7 +85,6 @@ namespace achilles {
         template<typename T>
         struct Address {
             Address(Block &&block) : _memory{ nullptr, 0 } {
-                // TOOD: allow for alignment
                 aassert(block.size >= sizeof(T), "T is larger than this address's memory block");
                 _memory = (Block &&) block;
             }
@@ -98,20 +94,25 @@ namespace achilles {
             }
 
             Address(Address &&other) : _memory { (Block &&) other._memory } {}
-            #if !defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
-            Address(Address const &other) : _memory { (Block const &) other._memory } {}
-            #endif
-
-            #if defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
-            ~Address() {
-                aassert(!_memory.isValid(), "address memory leak");
-            }
-            #endif
 
             Address & operator=(Address &&other) {
                 _memory = (Block &&) other._memory;
                 return *this;
             }
+
+            #if defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
+            ~Address() {
+                aassert(!_memory.isValid(), "address memory leak");
+            }
+            #else
+            Address(Address const &other) : _memory { (Block const &) other._memory } {}
+
+            Address & operator =(Address const &other) {
+                aassert(!isValid(), "assigning a new value to a valid address");
+                _memory = (Block const &) other._memory;
+                return *this;
+            }
+            #endif
 
             operator Block&() {
                 return _memory;
@@ -136,7 +137,7 @@ namespace achilles {
             }
 
             template<typename TR>
-            TR *cast() const {
+            TR *as() const {
                 return _memory;
             }
 
@@ -147,7 +148,7 @@ namespace achilles {
             }
 
             template<typename TR>
-            operator Address<TR>() {
+            operator Address<TR> () {
                 static_assert(
                     std::is_base_of_v<TR, T> || std::is_base_of_v<T, TR> ||
                     std::is_convertible_v<T*, TR*> || std::is_convertible_v<TR*, T*>,
@@ -157,7 +158,6 @@ namespace achilles {
                     auto result = Address<TR> {
                         (Block &&) _memory,
                     };
-                    _memory.invalidate();
                     return result;
                 } else {
                     return nullptr;
