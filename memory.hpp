@@ -191,6 +191,47 @@ namespace achilles {
             Slice &operator=(Slice const &other) = default;
             Slice &operator=(Slice &&other) = default;
 
+            template<u64 SIZE>
+            Slice<char const>(char const (&str)[SIZE]) : _memory{&str}, _size{SIZE} {}
+
+            Slice<char const>(char const *_str) : _memory{(char *) _str}, _size{strlen(_str)} {}
+
+            bool operator==(Slice const &other) const {
+                if (_memory == other.memory && _size == other._size) {
+                    return true;
+                } else if (_size == other._size) {
+                    bool areEqual = true;
+                    for (auto i = 0; i < _size && areEqual; ++i) {
+                        areEqual &= get(i) == other.get(i);
+                    }
+                    return areEqual;
+                } else {
+                    return false;
+                }
+            }
+
+            bool operator!=(Slice const &other) const {
+                return !operator==((Slice const &) other);
+            }
+
+            bool operator==(Slice &&other) const {
+                if (_memory == other.memory && _size == other._size) {
+                    return true;
+                } else if (_size == other._size) {
+                    bool areEqual = true;
+                    for (auto i = 0; i < _size && areEqual; ++i) {
+                        areEqual &= get(i) == other.get(i);
+                    }
+                    return areEqual;
+                } else {
+                    return false;
+                }
+            }
+
+            bool operator!=(Slice &&other) const {
+                return !operator==((Slice &&) other);
+            }
+
             operator T *() const {
                 return (T *) _memory;
             }
@@ -212,9 +253,18 @@ namespace achilles {
             }
 
             Slice slice(u64 low, u64 high) const {
+                aassert(low < high && high <= _size, "invalid slice range for slice");
                 return Slice {
                     _memory + low,
                     high - low,
+                };
+            }
+
+            Slice<T> slice(u64 low) {
+                aassert(low < _size, "invalid slice range for slice");
+                return Slice<T> {
+                    _memory + low,
+                    _size - low,
                 };
             }
         private:
@@ -303,6 +353,11 @@ namespace achilles {
                 return memory[--_size];
             }
 
+            type & top() {
+                type *memory = _block;
+                return memory[_size - 1];
+            }
+
             type & get(u64 index) const {
                 aassert(isValid(), "getting a value from an invalid array");
                 aassert(_size > 0, "getting a value from an empty array");
@@ -327,6 +382,29 @@ namespace achilles {
 
             Block & operator &() {
                 return _block;
+            }
+
+            Slice<T> slice(u64 low, u64 high) {
+                aassert(low < high && high <= _size, "invalid slice range for array");
+                return Slice<T> {
+                    (T *) (_block.memory + low),
+                    high - low,
+                };
+            }
+
+            Slice<T> slice(u64 low) {
+                aassert(low < _size, "invalid slice range for array");
+                return Slice<T> {
+                    (T *) (_block.memory + low),
+                    _size - low,
+                };
+            }
+
+            Slice<T> slice() {
+                return Slice<T> {
+                    (T *) _block.memory,
+                    _size,
+                };
             }
         private:
             Allocator *_allocator;
