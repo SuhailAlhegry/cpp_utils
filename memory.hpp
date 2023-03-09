@@ -369,6 +369,53 @@ namespace achilles {
                 return get(index);
             }
 
+            T remove(u64 index) {
+                aassert(isValid(), "removing a value from an invalid array");
+                aassert(_size > 0, "removing a value from an empty array");
+                aassert(index >= 0 && index < _size, "Array.remove: index out of bound");
+                T *memory = _block;
+                T item = memory[index];
+                for (auto i = index + 1; i < _size; ++i) {
+                    memory[i - 1] = memory[i];
+                }
+                _size -= 1;
+                return item;
+            }
+
+            void swap(u64 first, u64 second) {
+                aassert(isValid(), "swaping values in an invalid array");
+                aassert(_size > 0, "swaping values of an empty array");
+                aassert(first >= 0 && first < _size, "Array.swap: first index out of bound");
+                aassert(second >= 0 && second < _size, "Array.swap: second index out of bound");
+                aassert(first != second, "Array.swap: first and second are the same!");
+                T *memory = _block;
+                T temp = memory[first];
+                memory[first] = memory[second];
+                memory[second] = temp;
+            }
+
+            // removes the element by swapping it with the last element
+            T swapRemove(u64 index) {
+                aassert(isValid(), "removing a value from an invalid array");
+                aassert(_size > 0, "removing a value from an empty array");
+                aassert(index >= 0 && index < _size, "Array.swapRemove: index out of bound");
+                swap(index, --_size);
+                T *memory = _block;
+                return memory[_size];
+            }
+
+            u64 find(T value) {
+                aassert(isValid(), "trying to find a value from an invalid array");
+                aassert(_size > 0, "trying to find a value from an empty array");
+                T *memory = _block;
+                for (auto i = 0; i < _size; ++i) {
+                    if (value == memory[i]) {
+                        return i;
+                    }
+                }
+                return U64_MAX;
+            }
+
             void clear() {
                 _size = 0;
             }
