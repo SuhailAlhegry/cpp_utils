@@ -309,6 +309,10 @@ namespace achilles {
                 return *this;
             }
 
+            void updateAllocator(Allocator *allocator) {
+                this->_allocator = allocator;
+            }
+
             u64 size() const {
                 return _size;
             }
