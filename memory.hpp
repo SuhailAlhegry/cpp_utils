@@ -1,3 +1,4 @@
+#include "utils/types.hpp"
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
@@ -63,6 +64,14 @@ namespace achilles {
                 return *this;
             }
             #endif
+
+            bool operator ==(Block const &other) {
+                return other.memory == memory && other.size == size;
+            }
+
+            bool operator ==(Block &&other) {
+                return other.memory == memory && other.size == size;
+            }
 
             template<typename T>
             operator T*() const {
@@ -404,9 +413,9 @@ namespace achilles {
                 return memory[_size];
             }
 
-            u64 find(T value) {
+            u64 find(T value) const {
                 aassert(isValid(), "trying to find a value from an invalid array");
-                aassert(_size > 0, "trying to find a value from an empty array");
+                if (_size == 0) return U64_MAX;
                 T *memory = _block;
                 for (auto i = 0; i < _size; ++i) {
                     if (value == memory[i]) {
