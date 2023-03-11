@@ -1,4 +1,3 @@
-#include "utils/types.hpp"
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
@@ -93,38 +92,43 @@ namespace achilles {
 
         template<typename T>
         struct Address {
-            Address(Block &&block) : _memory{ nullptr, 0 } {
-                aassert(block.size >= sizeof(T), "T is larger than this address's memory block");
-                _memory = (Block &&) block;
+            template<typename... Args>
+            Address(Allocator &allocator, Args &&...args)
+                : _allocator{allocator},
+                  _memory{ nullptr, 0 }
+            {
+                _memory = allocator.allocate(sizeof(T));
+                new (_memory) T { std::forward<Args>(args)... };
             }
 
-            Address(void *ptr) : _memory { nullptr, 0 } {
+            Address(Allocator &allocator, Block &&blk)
+                : _allocator{allocator},
+                  _memory{ std::move(blk) } {}
+
+            Address(void *ptr)
+                  // undefined behavior
+                : _allocator{(Allocator &)*(Allocator *)(ptr)},
+                  _memory { nullptr, 0 }
+            {
                 aassert(ptr == nullptr, "assigning a valid raw pointer to address");
             }
 
-            Address(Address &&other) : _memory { (Block &&) other._memory } {}
+            Address(Address &&other) : _allocator{other._allocator}, _memory { (Block &&) other._memory } {}
 
             Address & operator=(Address &&other) {
+                aassert(!isValid(), "assigning a new value to a valid address");
+                _allocator = other._allocator;
                 _memory = (Block &&) other._memory;
                 return *this;
             }
 
-            #if defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
-            ~Address() {
-                aassert(!_memory.isValid(), "address memory leak");
-            }
-            #else
-            Address(Address const &other) : _memory { (Block const &) other._memory } {}
+            Address(Address const &other) : _allocator{_allocator}, _memory { (Block const &) other._memory } {}
 
             Address & operator =(Address const &other) {
                 aassert(!isValid(), "assigning a new value to a valid address");
+                _allocator = other._allocator;
                 _memory = (Block const &) other._memory;
                 return *this;
-            }
-            #endif
-
-            operator Block&() {
-                return _memory;
             }
 
             T * operator->() const {
@@ -165,7 +169,8 @@ namespace achilles {
                 );
                 if (isValid()) {
                     auto result = Address<TR> {
-                        (Block &&) _memory,
+                        _allocator,
+                        std::move(_memory),
                     };
                     return result;
                 } else {
@@ -177,6 +182,7 @@ namespace achilles {
             Address<TR> convert() {
                 if (isValid()) {
                     auto result = Address<TR> {
+                        _allocator,
                         std::move(_memory),
                     };
                     return result;
@@ -188,8 +194,18 @@ namespace achilles {
             bool isValid() const {
                 return _memory.isValid();
             }
+
+            void destroy() {
+                if (!isValid()) return;
+                _allocator.deallocate(_memory);
+            }
+
+            ~Address() {
+                destroy();
+            }
         private:
             Block _memory;
+            Allocator &_allocator;
         };
 
         template<typename T>
@@ -285,20 +301,27 @@ namespace achilles {
         struct Array {
             using type = T;
 
-            Array(Allocator *allocator, u64 capacity = 8) : _allocator{allocator} {
-                aassert(allocator != nullptr, "using a null allocator to initialize an array");
+            Array(Allocator &allocator, u64 capacity = 8) : _allocator{allocator} {
                 if (capacity > 0) {
-                    _block = allocator->allocate(capacity * sizeof(type));
+                    _block = allocator.allocate(capacity * sizeof(type));
+                }
+            }
+
+            template<typename... Items>
+            Array(Allocator &allocator, T &&item, Items &&...items) : _allocator{allocator} {
+                auto items_ = {item, std::forward<Items>(items)...};
+                _block = allocator.allocate(items_.size());
+                for (auto i : items_) {
+                    push(i);
                 }
             }
 
             Array(Array &&other)
                 : _allocator {other._allocator},
-                  _block {(Block &&) other._block},
+                  _block {std::move(other._block)},
                   _size {other._size}
             {
                 other._size = 0;
-                other._allocator = nullptr;
             }
 
             Array & operator=(Array &&other) {
@@ -306,11 +329,8 @@ namespace achilles {
                 _allocator = other._allocator;
                 _block = other._block;
                 _size = other._size;
+                other._size = 0;
                 return *this;
-            }
-
-            void updateAllocator(Allocator *allocator) {
-                this->_allocator = allocator;
             }
 
             u64 size() const {
@@ -322,13 +342,13 @@ namespace achilles {
             }
 
             bool isValid() const {
-                return _allocator != nullptr && _block.isValid();
+                return _block.isValid();
             }
 
             bool push(type &&value) {
                 if (!isValid()) return false;
                 if (capacity() == _size) {
-                    if (!_allocator->tryResize(_block, _block.size * 2)) {
+                    if (!_allocator.tryResize(_block, _block.size * 2)) {
                         return false;
                     }
                 }
@@ -345,7 +365,7 @@ namespace achilles {
             bool push(type const &value) {
                 if (!isValid()) return false;
                 if (capacity() == _size) {
-                    if (!_allocator->tryResize(_block, _block.size * 2)) {
+                    if (!_allocator.tryResize(_block, _block.size * 2)) {
                         return false;
                     }
                 }
@@ -380,6 +400,10 @@ namespace achilles {
 
             type & operator[](u64 index) const {
                 return get(index);
+            }
+
+            operator bool() {
+                return isValid();
             }
 
             T remove(u64 index) {
@@ -435,9 +459,17 @@ namespace achilles {
 
             bool destroy() {
                 if (!isValid()) return false;
-                _allocator->deallocate(_block);
+                T *mem = _block;
+                for (auto i = 0; i < _size; ++i) {
+                    mem[i].~T();
+                }
+                _allocator.deallocate(_block);
                 clear();
                 return true;
+            }
+
+            ~Array() {
+                destroy();
             }
 
             Block & operator &() {
@@ -467,10 +499,22 @@ namespace achilles {
                 };
             }
         private:
-            Allocator *_allocator;
+            Allocator &_allocator;
             Block _block { nullptr, 0 };
             u64 _size = 0;
         };
+
+        template<typename T>
+        Address<T> copy(Allocator &allocator, Address<T> const &address) {
+            aassert(address.isValid(), "source address is null");
+            Address<T> result = allocator.allocate(sizeof(T));
+            if constexpr (std::is_trivial_v<T>) {
+                result.template as<T>() = *address;
+            } else {
+                new (result) T(*address);
+            }
+            return std::move(result);
+        }
 
         template<typename T, typename W>
         struct RelativePointer {
