@@ -1,3 +1,4 @@
+#include "utils/assert.hpp"
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
@@ -93,21 +94,22 @@ namespace achilles {
         template<typename T>
         struct Address {
             template<typename... Args>
-            Address(Allocator &allocator, Args &&...args)
+            Address(Allocator *allocator, Args &&...args)
                 : _allocator{allocator},
                   _memory{ nullptr, 0 }
             {
-                _memory = allocator.allocate(sizeof(T));
+                aassert(allocator != nullptr, "allocator provided for address was null");
+                _memory = allocator->allocate(sizeof(T));
                 new (_memory) T { std::forward<Args>(args)... };
             }
 
-            Address(Allocator &allocator, Block &&blk)
+            Address(Allocator *allocator, Block &&blk)
                 : _allocator{allocator},
                   _memory{ std::move(blk) } {}
 
             Address(void *ptr)
                   // undefined behavior
-                : _allocator{(Allocator &)*(Allocator *)(ptr)},
+                : _allocator{nullptr},
                   _memory { nullptr, 0 }
             {
                 aassert(ptr == nullptr, "assigning a valid raw pointer to address");
@@ -197,7 +199,7 @@ namespace achilles {
 
             void destroy() {
                 if (!isValid()) return;
-                _allocator.deallocate(_memory);
+                _allocator->deallocate(_memory);
             }
 
             ~Address() {
@@ -205,7 +207,7 @@ namespace achilles {
             }
         private:
             Block _memory;
-            Allocator &_allocator;
+            Allocator *_allocator;
         };
 
         template<typename T>
