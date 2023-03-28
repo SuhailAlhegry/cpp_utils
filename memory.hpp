@@ -1,4 +1,5 @@
 #include "utils/assert.hpp"
+#include <string.h>
 #if !defined(ACHILLES_MEMORY_HPP)
 #define ACHILLES_MEMORY_HPP
 
@@ -316,6 +317,15 @@ namespace achilles {
                 for (auto i : items_) {
                     push(i);
                 }
+            }
+
+            Array(Array const &other)
+                : _allocator { other._allocator },
+                  _block { nullptr, 0 },
+                  _size { other._size }
+            {
+                _block = _allocator.allocate(_size * sizeof(T));
+                memcpy(_block, other._block, other._block.size);
             }
 
             Array(Array &&other)
