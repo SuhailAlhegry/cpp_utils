@@ -125,7 +125,7 @@ namespace achilles {
                 return *this;
             }
 
-            Address(Address const &other) : _allocator{_allocator}, _memory { (Block const &) other._memory } {}
+            Address(Address const &other) : _allocator{other._allocator}, _memory { (Block const &) other._memory } {}
 
             Address & operator =(Address const &other) {
                 aassert(!isValid(), "assigning a new value to a valid address");
@@ -312,10 +312,12 @@ namespace achilles {
 
             template<typename... Items>
             Array(Allocator &allocator, T &&item, Items &&...items) : _allocator{allocator} {
-                auto items_ = {item, std::forward<Items>(items)...};
-                _block = allocator.allocate(items_.size());
-                for (auto i : items_) {
-                    push(i);
+                std::initializer_list<T> items_ = {std::forward<T>(item), std::forward<Items>(items)...};
+                _block = allocator.allocate(items_.size() * sizeof(T));
+                for (auto &i : items_) {
+                    // this stupid hack because we cannot have a non-const iterator when iterating std::initializer_list
+                    auto &e = const_cast<T &>(i);
+                    push(std::move(e));
                 }
             }
 
