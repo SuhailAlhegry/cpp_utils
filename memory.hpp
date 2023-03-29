@@ -94,6 +94,12 @@ namespace achilles {
 
         template<typename T>
         struct Address {
+            Address(void *ptr) : _allocator{nullptr}, _memory { nullptr, 0 } {
+                aassert(ptr == nullptr, "assigning a valid raw pointer to address");
+            }
+
+            Address() : _allocator{nullptr}, _memory { nullptr, 0 } {}
+
             template<typename... Args>
             Address(Allocator *allocator, Args &&...args)
                 : _allocator{allocator},
@@ -108,13 +114,6 @@ namespace achilles {
                 : _allocator{allocator},
                   _memory{ std::move(blk) } {}
 
-            Address(void *ptr)
-                  // undefined behavior
-                : _allocator{nullptr},
-                  _memory { nullptr, 0 }
-            {
-                aassert(ptr == nullptr, "assigning a valid raw pointer to address");
-            }
 
             Address(Address &&other) : _allocator{other._allocator}, _memory { (Block &&) other._memory } {}
 
