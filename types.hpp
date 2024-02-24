@@ -113,6 +113,23 @@ namespace achilles {
             TypeHash _type;
             void *_ptr;
         };
+
+        template<typename Tag, typename T, T defaultValue>
+        struct TypeSafeHandle {
+          static TypeSafeHandle invalid() { return TypeSafeHandle(); }
+
+          TypeSafeHandle() : value{defaultValue} {}
+
+          explicit TypeSafeHandle(T value) : value{value} {}
+          explicit operator T() const { return value; }
+          friend bool operator ==(TypeSafeHandle a, TypeSafeHandle b) { return a.value == b.value; }
+        private:
+          T value;
+        };
+
+        #define HandleType(name, type, defaultValue)\
+          struct name##__tag {};\
+          typedef achilles::types::TypeSafeHandle<name##__tag, type, defaultValue> name
     };
 };
 
