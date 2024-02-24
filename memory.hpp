@@ -20,125 +20,170 @@
 
 namespace achilles {
     namespace memory {
-        struct Block;
-
         struct Allocator {
-            virtual Block allocate(u64 size) = 0;
-            virtual bool tryResize(Block &block, u64 newSize) = 0;
-            virtual void deallocate(Block &block) = 0;
-            virtual bool owns(Block const &) const { return true; }
-            virtual bool canAllocate(u64) const { return true; }
-            virtual bool canDeallocate(Block const &) const { return true; }
-       };
+            virtual u8 * allocate(u64 size) = 0;
+            virtual bool tryResize(u8 **memory, u64 oldSize, u64 newSize) = 0;
+            virtual void deallocate(u8 **memory, u64 size) = 0;
+            virtual bool owns(u8 *const memory, u64 size) const { (void) memory, (void) size; return true; }
+            virtual bool canAllocate(u64 size) const { (void) size; return true; }
+            virtual bool canDeallocate(u8 *const memory, u64 size) const { (void) memory, (void) size; return true; }
+        };
+
+        struct NullAllocator : Allocator {
+            u8 * allocate(u64 size) override {
+                (void) size;
+                return nullptr;
+            }
+
+            bool tryResize(u8 **memory, u64 oldSize, u64 newSize) override {
+                (void) oldSize;
+                (void) newSize;
+                if (memory) *memory = nullptr;
+                return false;
+            }
+
+            void deallocate(u8 **memory, u64 size) override {
+                (void) size;
+                if (memory) *memory = nullptr;
+            }
+
+            static NullAllocator &instance() {
+                static auto _instance = NullAllocator{};
+                return _instance;
+            }
+        };
+
+        struct GlobalAllocator : Allocator {
+            u8 * allocate(u64 size) override {
+                u8 *result = (u8 *) malloc(size);
+                if (result) {
+                    memset(result, 0, size);
+                }
+                return result;
+            }
+
+            bool tryResize(u8 **memory, u64 oldSize, u64 newSize) override {
+                if (memory == nullptr || *memory == nullptr) return false;
+                u8 *result = (u8 *) realloc(*memory, newSize);
+                if (result == nullptr) return false;
+                if (oldSize < newSize) {
+                } else {
+                    u64 diff = newSize - oldSize;
+                    u8 *pos = result + oldSize;
+                    memset(pos, 0, diff);
+                }
+                *memory = result;
+                return true;
+            }
+
+            void deallocate(u8 **memory, u64 size) override {
+                (void) size;
+                if (memory == nullptr || *memory == nullptr) return; 
+                free(*memory);
+                *memory = nullptr;
+            }
+
+            static GlobalAllocator &instance() {
+                static auto _instance = GlobalAllocator{};
+                return _instance;
+            }
+        };
 
         struct Block {
-            Block(u8 *memory, u64 size) : memory{memory}, size{size} {}
+            Block(u8 *memory, u64 size, Allocator &allocator) : _memory{memory}, _size{size}, _allocator{allocator} {}
 
-            Block(Block &&other) {
-                memory = other.memory;
-                size = other.size;
+            Block(Block &&other) : _memory{other._memory}, _size{other._size}, _allocator{other._allocator} {
                 other.invalidate();
             }
 
             Block &operator =(Block &&other) {
-                aassert(!isValid(), "trying to assign a new value to an already valid block, deallocate the block first.");
-                memory = other.memory;
-                size = other.size;
+                if (isValid()) _allocator.deallocate(&_memory, _size);
+                _memory = other._memory;
+                _size = other._size;
+                _allocator = other._allocator;
                 other.invalidate();
                 return *this;
             }
 
-            #if defined(ACHILLES_ENABLE_DESTRUCTOR_LEAK_DETECTION)
             ~Block() {
-                aassert(memory == nullptr, "memory leak");
-            }
-            #else
-            Block(Block const &other) {
-                memory = other.memory;
-                size = other.size;
+                _allocator.deallocate(&_memory, _size);
+                invalidate();
             }
 
-            Block &operator =(Block const &other) {
-                aassert(!isValid(), "trying to assign a new value to an already valid block, deallocate the block first.");
-                memory = other.memory;
-                size = other.size;
-                return *this;
-            }
-            #endif
+            Block(Block const &other) = delete;
+            Block &operator =(Block const &other) = delete;
 
             bool operator ==(Block const &other) {
-                return other.memory == memory && other.size == size;
+                return other._memory == _memory && other._size == _size;
             }
 
             bool operator ==(Block &&other) {
-                return other.memory == memory && other.size == size;
+                return other._memory == _memory && other._size == _size;
             }
 
             template<typename T>
-            operator T*() const {
-                return (T *) memory;
+            explicit operator T*() const {
+                return (T *) _memory;
             }
 
             bool isValid() const {
-                return memory != nullptr && size > 0;
+                return _memory != nullptr && _size > 0;
             }
 
+            Block copy(Allocator &allocator) {
+                u8 *result = allocator.allocate(_size);
+                memcpy(_memory, _memory, _size);
+                return Block{result, _size, allocator};
+            }
+
+            bool tryResize(u64 newSize) {
+                if (_allocator.tryResize(&_memory, _size, newSize)) {
+                    _size = newSize;
+                    return true;
+                } else  {
+                    return false;
+                }
+            }
+
+            u64 size() const {
+                return _size;
+            }
+        private:
             void invalidate() {
-                memory = nullptr;
-                size = 0;
+                _memory = nullptr;
+                _size = 0;
             }
 
-            u8 *memory;
-            u64 size;
+            u8 *_memory;
+            u64 _size;
+            Allocator &_allocator;
         };
 
         template<typename T>
         struct Address {
-            Address(void *ptr) : _allocator{nullptr}, _memory { nullptr, 0 } {
-                aassert(ptr == nullptr, "assigning a valid raw pointer to address");
-            }
-
-            Address() : _allocator{nullptr}, _memory { nullptr, 0 } {}
+            Address(Block &&block) : _block { std::move(block) } {}
 
             template<typename... Args>
-            Address(Allocator *allocator, Args &&...args)
-                : _allocator{allocator},
-                  _memory{ nullptr, 0 }
-            {
-                aassert(allocator != nullptr, "allocator provided for address was null");
-                _memory = allocator->allocate(sizeof(T));
-                new (_memory) T { std::forward<Args>(args)... };
+            Address(Allocator &allocator, Args &&...args) {
+                u8 *memory = allocator.allocate(sizeof(T));
+                if (memory) {
+                    new (memory) T { std::forward<Args>(args)... };
+                }
+                _block = Block{memory, sizeof(T), allocator};
             }
 
-            Address(Allocator *allocator, Block &&blk)
-                : _allocator{allocator},
-                  _memory{ std::move(blk) } {}
-
-
-            Address(Address &&other) : _allocator{other._allocator}, _memory { (Block &&) other._memory } {}
+            Address(Address &&other) : _block{std::move(other._block)} {}
 
             Address & operator=(Address &&other) {
-                aassert(!isValid(), "assigning a new value to a valid address");
-                _allocator = other._allocator;
-                _memory = (Block &&) other._memory;
+                _block = std::move(other._block);
                 return *this;
             }
 
-            Address(Address const &other) : _allocator{other._allocator}, _memory { (Block const &) other._memory } {}
+            Address(Address const &other) = delete;
+            Address & operator =(Address const &other) = delete;
 
-            Address & operator =(Address const &other) {
-                aassert(!isValid(), "assigning a new value to a valid address");
-                _allocator = other._allocator;
-                _memory = (Block const &) other._memory;
-                return *this;
-            }
-
-            T * operator->() const {
-                return _memory;
-            }
-
-            operator T*() const {
-                return _memory;
+            explicit operator T*() const {
+                return (T *) _block;
             }
             
             template<typename TR>
@@ -146,19 +191,25 @@ namespace achilles {
                 static_assert(
                     std::is_base_of_v<TR, T> || std::is_base_of_v<T, TR> ||
                     std::is_convertible_v<T*, TR*> || std::is_convertible_v<TR*, T*>,
-                    "cannot cast to a pointer with incompatible types, if you want to force it, use 'cast'"
+                    "cannot cast to a pointer with incompatible types, if you want to force it, use 'as'"
                 );
-                return _memory;
+                return (TR *) _block;
             }
 
             template<typename TR>
             TR *as() const {
-                return _memory;
+                return (TR *) _block;
+            }
+
+            T *operator->() const {
+                aassert(isValid(), "dereferncing an invalid address");
+                T *ptr = (T *) _block;
+                return ptr;
             }
 
             T & operator*() const {
                 aassert(isValid(), "dereferncing an invalid address");
-                T *ptr = _memory;
+                T *ptr = (T *) _block;
                 return *ptr;
             }
 
@@ -171,8 +222,7 @@ namespace achilles {
                 );
                 if (isValid()) {
                     auto result = Address<TR> {
-                        _allocator,
-                        std::move(_memory),
+                        std::move(_block),
                     };
                     return result;
                 } else {
@@ -181,11 +231,10 @@ namespace achilles {
             }
 
             template<typename TR>
-            Address<TR> convert() {
+            Address<TR> as() {
                 if (isValid()) {
                     auto result = Address<TR> {
-                        _allocator,
-                        std::move(_memory),
+                        std::move(_block),
                     };
                     return result;
                 } else {
@@ -193,21 +242,15 @@ namespace achilles {
                 }
             }
 
+            Address copy(Allocator &allocator) {
+                return Address{_block.copy(allocator)};
+            }
+
             bool isValid() const {
-                return _memory.isValid();
-            }
-
-            void destroy() {
-                if (!isValid()) return;
-                _allocator->deallocate(_memory);
-            }
-
-            ~Address() {
-                destroy();
+                return _block.isValid();
             }
         private:
-            Block _memory;
-            Allocator *_allocator;
+            Block _block;
         };
 
         template<typename T>
@@ -301,46 +344,39 @@ namespace achilles {
 
         template<typename T>
         struct Array {
-            using type = T;
-
-            Array(Allocator &allocator, u64 capacity = 8) : _allocator{allocator} {
+            Array(Allocator &allocator = NullAllocator::instance(), u64 capacity = 8) {
                 if (capacity > 0) {
-                    _block = allocator.allocate(capacity * sizeof(type));
+                    u8 *memory = allocator.allocate(capacity * sizeof(T));
+                    if (memory) {
+                        _block = Block { memory, capacity * sizeof(T), allocator };
+                    }
                 }
             }
 
             template<typename... Items>
-            Array(Allocator &allocator, T &&item, Items &&...items) : _allocator{allocator} {
+            Array(Allocator &allocator, T &&item, Items &&...items) {
                 std::initializer_list<T> items_ = {std::forward<T>(item), std::forward<Items>(items)...};
-                _block = allocator.allocate(items_.size() * sizeof(T));
-                for (auto &i : items_) {
-                    // this stupid hack because we cannot have a non-const iterator when iterating std::initializer_list
-                    auto &e = const_cast<T &>(i);
-                    push(std::move(e));
+                size_t size_ = items_.size() * sizeof(T);
+                u8 *memory = allocator.allocate(size_);
+                if (memory) {
+                    _block = Block { memory, size_, allocator };
+                    for (auto &i : items_) {
+                        // this stupid hack because we cannot have a non-const iterator when iterating std::initializer_list
+                        auto &e = const_cast<T &>(i);
+                        push(std::move(e));
+                    }
                 }
             }
 
-            Array(Array const &other)
-                : _allocator { other._allocator },
-                  _block { nullptr, 0 },
-                  _size { other._size }
-            {
-                _block = _allocator.allocate(_size * sizeof(T));
-                memcpy(_block, other._block, other._block.size);
-            }
-
             Array(Array &&other)
-                : _allocator {other._allocator},
-                  _block {std::move(other._block)},
+                : _block {std::move(other._block)},
                   _size {other._size}
             {
                 other._size = 0;
             }
 
             Array & operator=(Array &&other) {
-                aassert(!isValid(), "trying to assign a new value to a valid array, destroy the array first.");
-                _allocator = other._allocator;
-                _block = other._block;
+                _block = std::move(other._block);
                 _size = other._size;
                 other._size = 0;
                 return *this;
@@ -351,21 +387,21 @@ namespace achilles {
             }
 
             u64 capacity() const {
-                return _block.size / sizeof(type);
+                return _block.size() / sizeof(T);
             }
 
             bool isValid() const {
                 return _block.isValid();
             }
 
-            bool push(type &&value) {
+            bool push(T &&value) {
                 if (!isValid()) return false;
                 if (capacity() == _size) {
-                    if (!_allocator.tryResize(_block, _block.size * 2)) {
+                    if (!_block.tryResize(_block.size() * 2)) {
                         return false;
                     }
                 }
-                type *memory = _block;
+                T *memory = (T *) _block;
                 if constexpr (std::is_trivial_v<T>) {
                     memory[_size++] = value;
                 } else {
@@ -375,14 +411,14 @@ namespace achilles {
                 return true;
             }
 
-            bool push(type const &value) {
+            bool push(T const &value) {
                 if (!isValid()) return false;
                 if (capacity() == _size) {
-                    if (!_allocator.tryResize(_block, _block.size * 2)) {
+                    if (!_block.tryResize(_block.size() * 2)) {
                         return false;
                     }
                 }
-                type *memory = _block;
+                T *memory = (T *) _block;
                 if constexpr (std::is_trivial_v<T>) {
                     memory[_size] = value;
                 } else {
@@ -392,26 +428,26 @@ namespace achilles {
                 return true;
             }
 
-            type & pop() {
+            T & pop() {
                 aassert(isValid(), "popping from an invalid array");
                 aassert(_size > 0, "popping from an empty array");
-                type *memory = _block;
+                T *memory = (T *) _block;
                 return memory[--_size];
             }
 
-            type & top() {
-                type *memory = _block;
+            T & top() {
+                T *memory = (T *) _block;
                 return memory[_size - 1];
             }
 
-            type & get(u64 index) const {
+            T & get(u64 index) const {
                 aassert(isValid(), "getting a value from an invalid array");
                 aassert(_size > 0, "getting a value from an empty array");
-                type *memory = _block;
+                T *memory = (T *) _block;
                 return memory[index];
             }
 
-            type & operator[](u64 index) const {
+            T & operator[](u64 index) const {
                 return get(index);
             }
 
@@ -423,7 +459,7 @@ namespace achilles {
                 aassert(isValid(), "removing a value from an invalid array");
                 aassert(_size > 0, "removing a value from an empty array");
                 aassert(index >= 0 && index < _size, "Array.remove: index out of bound");
-                T *memory = _block;
+                T *memory = (T *) _block;
                 T item = memory[index];
                 for (auto i = index + 1; i < _size; ++i) {
                     memory[i - 1] = memory[i];
@@ -438,7 +474,7 @@ namespace achilles {
                 aassert(first >= 0 && first < _size, "Array.swap: first index out of bound");
                 aassert(second >= 0 && second < _size, "Array.swap: second index out of bound");
                 aassert(first != second, "Array.swap: first and second are the same!");
-                T *memory = _block;
+                T *memory = (T *) _block;
                 T temp = memory[first];
                 memory[first] = memory[second];
                 memory[second] = temp;
@@ -450,14 +486,14 @@ namespace achilles {
                 aassert(_size > 0, "removing a value from an empty array");
                 aassert(index >= 0 && index < _size, "Array.swapRemove: index out of bound");
                 swap(index, --_size);
-                T *memory = _block;
+                T *memory = (T *) _block;
                 return memory[_size];
             }
 
             u64 find(T value) const {
                 aassert(isValid(), "trying to find a value from an invalid array");
                 if (_size == 0) return U64_MAX;
-                T *memory = _block;
+                T *memory = (T *) _block;
                 for (auto i = 0; i < _size; ++i) {
                     if (value == memory[i]) {
                         return i;
@@ -470,19 +506,13 @@ namespace achilles {
                 _size = 0;
             }
 
-            bool destroy() {
-                if (!isValid()) return false;
-                T *mem = _block;
+            ~Array() {
+                if (!isValid()) return;
+                T *mem = (T *) _block;
                 for (auto i = 0; i < _size; ++i) {
                     mem[i].~T();
                 }
-                _allocator.deallocate(_block);
                 clear();
-                return true;
-            }
-
-            ~Array() {
-                destroy();
             }
 
             Block & operator &() {
@@ -492,7 +522,7 @@ namespace achilles {
             Slice<T> slice(u64 low, u64 high) {
                 aassert(low < high && high <= _size, "invalid slice range for array");
                 return Slice<T> {
-                    (T *) (_block.memory + low),
+                    ((T *) _block) + low,
                     high - low,
                 };
             }
@@ -500,40 +530,24 @@ namespace achilles {
             Slice<T> slice(u64 low) {
                 aassert(low < _size, "invalid slice range for array");
                 return Slice<T> {
-                    (T *) (_block.memory + low),
+                    ((T *) _block) + low,
                     _size - low,
                 };
             }
 
             Slice<T> slice() {
                 return Slice<T> {
-                    (T *) _block.memory,
+                    (T *) _block,
                     _size,
                 };
             }
         private:
-            Allocator &_allocator;
-            Block _block { nullptr, 0 };
+            Block _block;
             u64 _size = 0;
         };
 
-        template<typename T>
-        Address<T> copy(Allocator &allocator, Address<T> const &address) {
-            aassert(address.isValid(), "source address is null");
-            Address<T> result = allocator.allocate(sizeof(T));
-            if constexpr (std::is_trivial_v<T>) {
-                result.template as<T>() = *address;
-            } else {
-                new (result) T(*address);
-            }
-            return std::move(result);
-        }
-
         template<typename T, typename W>
         struct RelativePointer {
-            W   *base;
-            u64  offset;
-
             RelativePointer() : base(nullptr), offset(0) {}
 
             RelativePointer(W *base, u64 offset = 0) : base(base), offset(offset) {
@@ -644,6 +658,44 @@ namespace achilles {
             bool isValid() {
                 return base != nullptr;
             }
+
+        private:
+            W   *base;
+            u64  offset;
+        };
+
+        template<typename T>
+        struct OffsetPointer {
+            OffsetPointer(u64 offset) : _offset(offset) {}
+
+            explicit operator T*() {
+                return asPtr();
+            }
+
+            T * operator->() {
+                return asPtr();
+            }
+
+            T &operator *() {
+                return *(asPtr());
+            }
+
+            T **operator&() {
+                return &(asPtr());
+            }
+
+            operator bool() {
+                return isValid();
+            }
+
+            bool isValid() const {
+                return _offset != 0;
+            }
+        private:
+            T *asPtr() {
+                return isValid() ? *reinterpret_cast<T *>(((char *) &_offset) + _offset) : nullptr;
+            }
+            u64 _offset;
         };
     }
 }
