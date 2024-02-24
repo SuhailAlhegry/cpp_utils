@@ -16,8 +16,7 @@ namespace achilles {
             FILE_TEXT,
         };
 
-
-        inline Block readFile(const char *path, Allocator &allocator, FileMode mode = FILE_BINARY) {
+        inline Block readFile(const char *path, Allocator &allocator = GlobalAllocator::instance(), FileMode mode = FILE_BINARY) {
             FILE* file = nullptr;
             constexpr u64 READ_BUFFER_SIZE = 256;
 
@@ -28,8 +27,7 @@ namespace achilles {
                 std::fseek(file, 0, SEEK_END);
                 u64 fileSize = ftell(file);
                 std::rewind(file);
-                Block blk = allocator.allocate(fileSize);
-                u8 *memory = blk;
+                u8 *memory = allocator.allocate(fileSize);
                 u64 totalBytesRead = 0;
                 u8 buffer[READ_BUFFER_SIZE];
                 while (!std::feof(file)) {
@@ -40,15 +38,15 @@ namespace achilles {
                     }
                 }
                 std::fclose(file);
-                return blk;
+                return Block {memory, fileSize, allocator};
             }
             
-            return Block { nullptr, 0 };
+            return Block { nullptr, 0, allocator };
         }
 
         inline bool writeToFile(const char *path, Block &block, u64 elementsToWrite = 0, FileMode mode = FILE_BINARY) {
             aassert(block.isValid(), "trying to write to a file from an invalid memory block");
-            u64 count = block.size;
+            u64 count = block.size();
             aassert(count >= elementsToWrite, "trying to write more elements than stored in the memory holder");
 
             FILE *file = nullptr;
@@ -61,7 +59,7 @@ namespace achilles {
                 if (elementsToWrite != 0) {
                     elementCount = elementsToWrite;
                 }
-                std::fwrite(block, sizeof(u8), elementCount, file);
+                std::fwrite((void *) block, sizeof(u8), elementCount, file);
                 std::fclose(file);
                 return true;
             }
